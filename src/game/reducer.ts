@@ -1,7 +1,7 @@
 import {
-  GameState, BuildingType, ResourceKey, Inventory,
-  BUILDING_COSTS, UPGRADE_COSTS, SELL_PRICES,
-  MINER_BASE_RATE, REFINERY_MULTIPLIERS,
+  GameState, BuildingType, ResourceKey, Inventory, GRID_SIZE,
+  BUILDING_COSTS, UPGRADE_COSTS, SELL_PRICES, ORES,
+  MINER_BASE_RATE, REFINERY_MULTIPLIERS, REFINERY_SPEED,
   FOUNDRY_INPUT, FOUNDRY_OUTPUT, FOUNDRY_SPEED,
 } from './types';
 import { generateGrid } from './grid';
@@ -11,25 +11,29 @@ export type GameAction =
   | { type: 'UPGRADE_BUILDING'; x: number; y: number }
   | { type: 'DISASSEMBLE'; x: number; y: number }
   | { type: 'TOGGLE_BUILDING'; x: number; y: number }
-  | { type: 'SET_ORE_TARGET'; x: number; y: number; oreTarget: 'iron' | 'copper' }
-  | { type: 'SELL'; resource: ResourceKey; amount: number }
-  | { type: 'CRAFT'; inputResource: ResourceKey; inputAmount: number; outputResource: ResourceKey; outputAmount: number }
+  | { type: 'SET_ORE_TARGET'; x: number; y: number; oreTarget: string }
+  | { type: 'SELL'; resource: string; amount: number }
+  | { type: 'CRAFT'; inputResource: string; inputAmount: number; outputResource: string; outputAmount: number }
   | { type: 'TICK' }
+  | { type: 'GLOBAL_BATCH_PROCESS'; processType: 'refine' | 'smelt' }
   | { type: 'LOAD'; state: GameState }
-  | { type: 'RESET' };
+  | { type: 'RESET' }
+  | { type: 'REBIRTH' }
+  | { type: 'MARKET_SELL'; resource: string; amount: number }
+  | { type: 'MARKET_BUY'; resource: string; amount: number; totalCost: number }
+  | { type: 'MARKET_CLAIM_CASH'; amount: number }
+  | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number };
 
 export function createInitialState(): GameState {
   const seed = Date.now();
   return {
     grid: generateGrid(seed),
-    inventory: {
-      iron_ore: 0, copper_ore: 0,
-      refined_iron: 0, refined_copper: 0,
-      iron_ingot: 0, copper_ingot: 0,
-    },
+    inventory: {},
     currency: 200,
     seed,
     tickCount: 0,
+    activeBuildings: [],
+    totalSpent: 0,
   };
 }
 
@@ -42,19 +46,42 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (buildingType === 'miner' && !tile.oreType) return state;
 
       const cost = BUILDING_COSTS[buildingType][0];
-      if (state.currency < cost) return state;
+      if (state.currency < cost.currency) return state;
+      
+      // Check material costs
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          if ((state.inventory[res as ResourceKey] || 0) < (amt as number)) return state;
+        }
+      }
 
-      const newGrid = state.grid.map(r => r.map(t => ({ ...t })));
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
       newGrid[y][x] = {
         ...newGrid[y][x],
         building: {
           type: buildingType,
           level: 1,
           active: true,
-          oreTarget: buildingType !== 'miner' ? tile.oreType : undefined,
+          oreTarget: buildingType !== 'miner' ? tile.oreType || 'iron' : undefined,
         },
       };
-      return { ...state, grid: newGrid, currency: state.currency - cost };
+
+      const newInventory = { ...state.inventory };
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          newInventory[res as ResourceKey] = (newInventory[res as ResourceKey] || 0) - (amt as number);
+        }
+      }
+
+      return {
+        ...state,
+        grid: newGrid,
+        inventory: newInventory,
+        currency: state.currency - cost.currency,
+        totalSpent: (state.totalSpent || 0) + cost.currency,
+        activeBuildings: [...state.activeBuildings, { x, y }],
+      };
     }
 
     case 'UPGRADE_BUILDING': {
@@ -64,31 +91,62 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const nextLevel = tile.building.level;
       const cost = UPGRADE_COSTS[tile.building.type][nextLevel];
-      if (state.currency < cost) return state;
+      if (state.currency < cost.currency) return state;
+      
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          if ((state.inventory[res as ResourceKey] || 0) < (amt as number)) return state;
+        }
+      }
 
-      const newGrid = state.grid.map(r => r.map(t => ({ ...t })));
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
       newGrid[y][x] = {
         ...newGrid[y][x],
         building: { ...tile.building, level: tile.building.level + 1 },
       };
-      return { ...state, grid: newGrid, currency: state.currency - cost };
+
+      const newInventory = { ...state.inventory };
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          newInventory[res as ResourceKey] = (newInventory[res as ResourceKey] || 0) - (amt as number);
+        }
+      }
+
+      return { 
+        ...state, 
+        grid: newGrid, 
+        inventory: newInventory, 
+        currency: state.currency - cost.currency,
+        totalSpent: (state.totalSpent || 0) + cost.currency
+      };
     }
 
     case 'DISASSEMBLE': {
       const { x, y } = action;
       const tile = state.grid[y][x];
       if (!tile.building) return state;
-      const refund = Math.floor(BUILDING_COSTS[tile.building.type][0] * 0.5);
-      const newGrid = state.grid.map(r => r.map(t => ({ ...t })));
+      const refund = Math.floor(BUILDING_COSTS[tile.building.type][0].currency * 0.5);
+
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
       newGrid[y][x] = { ...newGrid[y][x], building: null };
-      return { ...state, grid: newGrid, currency: state.currency + refund };
+
+      return {
+        ...state,
+        grid: newGrid,
+        currency: state.currency + refund,
+        activeBuildings: state.activeBuildings.filter(b => b.x !== x || b.y !== y),
+      };
     }
 
     case 'TOGGLE_BUILDING': {
       const { x, y } = action;
       const tile = state.grid[y][x];
       if (!tile.building) return state;
-      const newGrid = state.grid.map(r => r.map(t => ({ ...t })));
+
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
       newGrid[y][x] = {
         ...newGrid[y][x],
         building: { ...tile.building, active: !tile.building.active },
@@ -100,20 +158,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const { x, y, oreTarget } = action;
       const tile = state.grid[y][x];
       if (!tile.building) return state;
-      const newGrid = state.grid.map(r => r.map(t => ({ ...t })));
+
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
       newGrid[y][x] = {
         ...newGrid[y][x],
-        building: { ...tile.building, oreTarget },
+        building: { ...tile.building, oreTarget: oreTarget as any },
       };
       return { ...state, grid: newGrid };
     }
 
     case 'SELL': {
       const { resource, amount } = action;
-      const available = state.inventory[resource];
+      const available = state.inventory[resource as ResourceKey] || 0;
       const sellAmount = Math.min(amount, available);
       if (sellAmount <= 0) return state;
-      const price = SELL_PRICES[resource] || 0;
+      const price = SELL_PRICES[resource as ResourceKey] || 0;
       return {
         ...state,
         inventory: { ...state.inventory, [resource]: available - sellAmount },
@@ -123,14 +183,38 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'CRAFT': {
       const { inputResource, inputAmount, outputResource, outputAmount } = action;
-      if (state.inventory[inputResource] < inputAmount) return state;
+      if ((state.inventory[inputResource as ResourceKey] || 0) < inputAmount) return state;
       return {
         ...state,
         inventory: {
           ...state.inventory,
-          [inputResource]: state.inventory[inputResource] - inputAmount,
-          [outputResource]: state.inventory[outputResource] + outputAmount,
+          [inputResource]: (state.inventory[inputResource as ResourceKey] || 0) - inputAmount,
+          [outputResource]: (state.inventory[outputResource as ResourceKey] || 0) + outputAmount,
         },
+      };
+    }
+
+    case 'SMELT_ALLOY': {
+      const { inputs, output, outputAmount } = action;
+      // Verification: Ensure player has all inputs
+      let canSmelt = true;
+      for (const [res, amt] of Object.entries(inputs)) {
+        if ((state.inventory[res as ResourceKey] || 0) < amt) {
+          canSmelt = false;
+          break;
+        }
+      }
+      if (!canSmelt) return state;
+
+      const newInv = { ...state.inventory };
+      for (const [res, amt] of Object.entries(inputs)) {
+        newInv[res as keyof typeof newInv] = (newInv[res as keyof typeof newInv] || 0) - amt;
+      }
+      newInv[output as keyof typeof newInv] = (newInv[output as keyof typeof newInv] || 0) + outputAmount;
+
+      return {
+        ...state,
+        inventory: newInv,
       };
     }
 
@@ -138,48 +222,38 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const inv: Inventory = { ...state.inventory };
       const ticksPerHour = 3600;
 
-      for (const row of state.grid) {
-        for (const tile of row) {
-          if (tile.building?.type === 'miner' && tile.building.active) {
-            const rate = (MINER_BASE_RATE * tile.building.level * (tile.purity / 100)) / ticksPerHour;
-            const key: ResourceKey = `${tile.oreType}_ore` as ResourceKey;
-            inv[key] += rate;
-          }
-        }
-      }
+      for (const coords of state.activeBuildings) {
+        const tile = state.grid[coords.y][coords.x];
+        const b = tile.building;
+        if (!b || !b.active) continue;
 
-      for (const row of state.grid) {
-        for (const tile of row) {
-          if (tile.building?.type === 'refinery' && tile.building.active) {
-            const ore = tile.building.oreTarget || 'iron';
-            const rawKey: ResourceKey = `${ore}_ore` as ResourceKey;
-            const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
-            const mult = REFINERY_MULTIPLIERS[tile.building.level - 1];
-            const processRate = (10 * tile.building.level) / ticksPerHour;
-            const consumed = Math.min(inv[rawKey], processRate);
-            if (consumed > 0) {
-              inv[rawKey] -= consumed;
-              inv[refKey] += consumed * mult;
-            }
+        if (b.type === 'miner') {
+          const rate = (MINER_BASE_RATE * b.level * (tile.purity / 100)) / ticksPerHour;
+          const key: ResourceKey = `${tile.oreType}_ore` as ResourceKey;
+          inv[key] = (inv[key] || 0) + rate;
+        } else if (b.type === 'refinery') {
+          const ore = b.oreTarget || 'iron';
+          const rawKey: ResourceKey = `${ore}_ore` as ResourceKey;
+          const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
+          const mult = REFINERY_MULTIPLIERS[b.level - 1];
+          const processRate = (REFINERY_SPEED[b.level - 1]) / ticksPerHour;
+          const consumed = Math.min(inv[rawKey] || 0, processRate);
+          if (consumed > 0) {
+            inv[rawKey] = (inv[rawKey] || 0) - consumed;
+            inv[refKey] = (inv[refKey] || 0) + consumed * mult;
           }
-        }
-      }
-
-      for (const row of state.grid) {
-        for (const tile of row) {
-          if (tile.building?.type === 'foundry' && tile.building.active) {
-            const ore = tile.building.oreTarget || 'iron';
-            const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
-            const ingotKey: ResourceKey = `${ore}_ingot` as ResourceKey;
-            const speed = FOUNDRY_SPEED[tile.building.level - 1];
-            const batchesPerTick = speed / ticksPerHour;
-            const neededInput = FOUNDRY_INPUT * batchesPerTick;
-            const consumed = Math.min(inv[refKey], neededInput);
-            if (consumed > 0) {
-              const ratio = consumed / neededInput;
-              inv[refKey] -= consumed;
-              inv[ingotKey] += FOUNDRY_OUTPUT * batchesPerTick * ratio;
-            }
+        } else if (b.type === 'foundry') {
+          const ore = b.oreTarget || 'iron';
+          const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
+          const ingotKey: ResourceKey = `${ore}_ingot` as ResourceKey;
+          const speed = FOUNDRY_SPEED[b.level - 1];
+          const batchesPerTick = speed / ticksPerHour;
+          const neededInput = FOUNDRY_INPUT * batchesPerTick;
+          const consumed = Math.min(inv[refKey] || 0, neededInput);
+          if (consumed > 0) {
+            const ratio = consumed / neededInput;
+            inv[refKey] = (inv[refKey] || 0) - consumed;
+            inv[ingotKey] = (inv[ingotKey] || 0) + (FOUNDRY_OUTPUT * batchesPerTick * ratio);
           }
         }
       }
@@ -187,11 +261,123 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, inventory: inv, tickCount: state.tickCount + 1 };
     }
 
-    case 'LOAD':
-      return action.state;
+    case 'GLOBAL_BATCH_PROCESS': {
+      const { processType } = action;
+      const inv = { ...state.inventory };
+      let capacity = 0;
+
+      for (const coords of state.activeBuildings) {
+        const tile = state.grid[coords.y][coords.x];
+        const b = tile.building;
+        if (!b || !b.active) continue;
+
+        if (processType === 'refine' && b.type === 'refinery') {
+          capacity += REFINERY_SPEED[b.level - 1] * 2;
+        } else if (processType === 'smelt' && b.type === 'foundry') {
+          capacity += FOUNDRY_SPEED[b.level - 1] * 2;
+        }
+      }
+
+      if (capacity <= 0) return state;
+
+      const perOreCapacity = capacity / ORES.length;
+
+      if (processType === 'refine') {
+        ORES.forEach(ore => {
+          const rawKey = `${ore}_ore` as ResourceKey;
+          const refKey = `refined_${ore}` as ResourceKey;
+          const toProcess = Math.min(inv[rawKey] || 0, perOreCapacity);
+          if (toProcess > 0) {
+            inv[rawKey] = (inv[rawKey] || 0) - toProcess;
+            inv[refKey] = (inv[refKey] || 0) + toProcess * 1.5;
+          }
+        });
+      } else {
+        ORES.forEach(ore => {
+          const refKey = `refined_${ore}` as ResourceKey;
+          const ingotKey = `${ore}_ingot` as ResourceKey;
+          const toProcess = Math.min(inv[refKey] || 0, perOreCapacity);
+          if (toProcess >= 10) {
+            const batches = Math.floor(toProcess / 10);
+            inv[refKey] = (inv[refKey] || 0) - (batches * 10);
+            inv[ingotKey] = (inv[ingotKey] || 0) + (batches * 5);
+          }
+        });
+      }
+
+      return { ...state, inventory: inv };
+    }
+
+    case 'LOAD': {
+      const initial = createInitialState();
+      const loadedState = { ...initial, ...action.state };
+      
+      if (!loadedState.grid || loadedState.grid.length !== GRID_SIZE) {
+        loadedState.grid = initial.grid;
+      }
+
+      if (!loadedState.inventory) {
+        loadedState.inventory = {};
+      }
+
+      const activeBuildings: { x: number; y: number }[] = [];
+      loadedState.grid.forEach((row, y) => {
+        row.forEach((tile, x) => {
+          if (tile.building) activeBuildings.push({ x, y });
+        });
+      });
+      loadedState.activeBuildings = activeBuildings;
+      loadedState.totalSpent = loadedState.totalSpent || 0;
+
+      return loadedState;
+    }
 
     case 'RESET':
       return createInitialState();
+
+    case 'REBIRTH': {
+      if (state.currency < 1000) return state;
+      const refund = Math.floor((state.totalSpent || 0) * 0.75);
+      const newSeed = Date.now();
+      return {
+        ...state,
+        grid: generateGrid(newSeed),
+        seed: newSeed,
+        currency: state.currency - 1000 + refund,
+        totalSpent: 0,
+        activeBuildings: [],
+        inventory: {}, // Wipe inventory as miners are sold
+      };
+    }
+
+    case 'MARKET_SELL': {
+      const { resource, amount } = action;
+      const current = state.inventory[resource as ResourceKey] || 0;
+      if (current < amount) return state;
+      return {
+        ...state,
+        inventory: { ...state.inventory, [resource]: current - amount },
+      };
+    }
+
+    case 'MARKET_BUY': {
+      const { resource, amount, totalCost } = action;
+      return {
+        ...state,
+        currency: state.currency - totalCost,
+        inventory: { 
+          ...state.inventory, 
+          [resource]: (state.inventory[resource as ResourceKey] || 0) + amount 
+        },
+      };
+    }
+
+    case 'MARKET_CLAIM_CASH': {
+      return {
+        ...state,
+        currency: state.currency + action.amount,
+      };
+    }
 
     default:
       return state;

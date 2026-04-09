@@ -27,7 +27,7 @@ const Index = () => {
     <GameProvider>
       <div className="flex flex-col h-screen w-screen overflow-hidden" style={{ background: 'hsl(220, 20%, 10%)' }}>
         <GameHeader />
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-1 relative overflow-hidden flex flex-col">
           <GameGrid />
           <Hotbar />
         </div>

@@ -46,6 +46,7 @@ export type Database = {
           id: string
           updated_at: string
           user_id: string
+          pending_balance: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -54,6 +55,7 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id: string
+          pending_balance?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -62,6 +64,37 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
+          pending_balance?: number | null
+        }
+        Relationships: []
+      }
+      marketplace_listings: {
+        Row: {
+          id: string
+          seller_id: string
+          seller_email: string
+          resource: string
+          amount: number
+          price_per_unit: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          seller_id: string
+          seller_email: string
+          resource: string
+          amount: number
+          price_per_unit: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          seller_id?: string
+          seller_email?: string
+          resource?: string
+          amount?: number
+          price_per_unit?: number
+          created_at?: string
         }
         Relationships: []
       }
@@ -70,7 +103,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      buy_marketplace_item: {
+        Args: {
+          p_listing_id: string
+          p_amount: number
+        }
+        Returns: Json
+      }
+      claim_pending_balance: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

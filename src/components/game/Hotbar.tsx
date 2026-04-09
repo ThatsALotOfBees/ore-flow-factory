@@ -1,35 +1,27 @@
 import React, { useState } from 'react';
 import { useGame } from '@/game/GameContext';
-import { ResourceKey, SELL_PRICES } from '@/game/types';
+import { ResourceKey, SELL_PRICES, BUILDING_COSTS, REFINERY_SPEED, FOUNDRY_SPEED, FOUNDRY_INPUT, ORE_METADATA, ORES, OreType } from '@/game/types';
+import { MarketplacePanel } from './MarketplacePanel';
+import { AlloySmelterPanel } from './AlloySmelterPanel';
 
-const RESOURCE_LABELS: Record<ResourceKey, { icon: string; name: string }> = {
-  iron_ore: { icon: '🪨', name: 'Iron Ore' },
-  copper_ore: { icon: '🟤', name: 'Copper Ore' },
-  refined_iron: { icon: '✨', name: 'Ref. Iron' },
-  refined_copper: { icon: '💫', name: 'Ref. Copper' },
-  iron_ingot: { icon: '🧱', name: 'Iron Ingot' },
-  copper_ingot: { icon: '🥉', name: 'Copper Ingot' },
-};
-
-const RESOURCE_ORDER: ResourceKey[] = [
-  'iron_ore', 'copper_ore', 'refined_iron', 'refined_copper', 'iron_ingot', 'copper_ingot',
-];
-
-type HotbarTab = 'inventory' | 'marketplace' | 'crafting';
+type InventoryTab = 'ores' | 'refined' | 'ingots' | 'electronics';
 
 export function Hotbar() {
-  const [tab, setTab] = useState<HotbarTab>('inventory');
+  const { state, dispatch } = useGame();
+  const [tab, setTab] = useState<'inventory' | 'marketplace' | 'crafting' | 'factory' | 'alloys'>('inventory');
   const [expanded, setExpanded] = useState(true);
+  const [confirmRebirth, setConfirmRebirth] = useState(false);
 
-  const tabs: { key: HotbarTab; icon: string; label: string }[] = [
+  const tabs: { key: typeof tab; icon: string; label: string }[] = [
     { key: 'inventory', icon: '🎒', label: 'Inventory' },
     { key: 'marketplace', icon: '🏪', label: 'Market' },
     { key: 'crafting', icon: '🔨', label: 'Craft' },
+    { key: 'alloys', icon: '🌋', label: 'Alloys' },
+    { key: 'factory', icon: '🏭', label: 'Factory' },
   ];
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 flex flex-col items-center pointer-events-none">
-      {/* Panel */}
       {expanded && (
         <div
           className="pointer-events-auto w-full max-w-2xl rounded-t-xl border border-b-0 shadow-2xl overflow-hidden"
@@ -39,15 +31,16 @@ export function Hotbar() {
             color: 'hsl(210, 30%, 90%)',
           }}
         >
-          <div className="p-4 max-h-64 overflow-y-auto">
+          <div className="p-4 max-h-[400px] overflow-y-auto">
             {tab === 'inventory' && <InventoryPanel />}
             {tab === 'marketplace' && <MarketplacePanel />}
             {tab === 'crafting' && <CraftingPanel />}
+            {tab === 'alloys' && <AlloySmelterPanel />}
+            {tab === 'factory' && <FactoryPanel />}
           </div>
         </div>
       )}
 
-      {/* Tab bar */}
       <div
         className="pointer-events-auto flex items-center gap-1 px-2 py-1.5 rounded-t-lg shadow-lg border border-b-0"
         style={{
@@ -55,6 +48,27 @@ export function Hotbar() {
           borderColor: 'hsl(220, 15%, 22%)',
         }}
       >
+        <button
+          onClick={() => {
+            if (!confirmRebirth) {
+              setConfirmRebirth(true);
+              setTimeout(() => setConfirmRebirth(false), 3000); // Reset confirm after 3s
+            } else {
+              dispatch({ type: 'REBIRTH' });
+              setConfirmRebirth(false);
+            }
+          }}
+          disabled={state.currency < 1000}
+          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border disabled:opacity-30 mr-2 flex items-center justify-center gap-1 ${
+            confirmRebirth 
+              ? 'bg-red-500/20 text-red-400 border-red-500/30 hover:bg-red-500/30' 
+              : 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30 hover:bg-indigo-500/30'
+          }`}
+          title={`Cost: $1000. Refunds 75% of your plot spending ($${Math.floor((state.totalSpent || 0) * 0.75)}). Keeps your inventory.`}
+        >
+          {confirmRebirth ? '⚠️ Click again to Confirm' : '🌌 Buy New Space ($1000)'}
+        </button>
+        
         {tabs.map(t => (
           <button
             key={t.key}
@@ -75,140 +89,213 @@ export function Hotbar() {
 
 function InventoryPanel() {
   const { state } = useGame();
+  const [search, setSearch] = useState('');
+  const [rarityFilter, setRarityFilter] = useState<string>('All');
 
-  return (
-    <div>
-      <div className="text-xs uppercase tracking-wider opacity-50 mb-2">Your Resources</div>
-      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-        {RESOURCE_ORDER.map(key => {
-          const r = RESOURCE_LABELS[key];
-          const amount = state.inventory[key];
-          return (
-            <div
-              key={key}
-              className="flex flex-col items-center p-3 rounded-lg border border-white/5 bg-white/5"
-            >
-              <span className="text-2xl">{r.icon}</span>
-              <span className="text-[10px] opacity-60 mt-1">{r.name}</span>
-              <span className="text-sm font-bold font-mono">{amount.toFixed(1)}</span>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+  const rarities = ['All', 'Common', 'Uncommon', 'Rare', 'Very Rare', 'Ultra-Rare', 'Extremely Rare', 'Mythical', 'Legendary', 'Component'];
 
-function MarketplacePanel() {
-  const { state, dispatch } = useGame();
-  const [sellAmounts, setSellAmounts] = useState<Record<string, number>>({});
+  const getInventoryItems = () => {
+    const items: { key: string, amount: number, label: string, icon: string, color: string, rarity: string }[] = [];
+    
+    Object.entries(state.inventory).forEach(([key, value]) => {
+      const amount = Math.floor(value as number);
+      if (amount < 1) return;
 
-  const handleSell = (resource: ResourceKey) => {
-    const amount = sellAmounts[resource] || Math.floor(state.inventory[resource]);
-    if (amount > 0) {
-      dispatch({ type: 'SELL', resource, amount });
-      setSellAmounts(prev => ({ ...prev, [resource]: 0 }));
-    }
-  };
+      let oreType: OreType | null = null;
+      let label = key;
+      let icon = '📦';
+      let color = '#fff';
+      let rarity = 'Component';
 
-  const sellAll = () => {
-    RESOURCE_ORDER.forEach(key => {
-      const amount = Math.floor(state.inventory[key]);
-      if (amount > 0) dispatch({ type: 'SELL', resource: key, amount });
+      if (key === 'copper_wire') { icon = '➰'; label = 'Copper Wire'; }
+      else if (key === 'circuit_board') { icon = '📟'; label = 'Circuit Board'; }
+      else {
+        const match = key.match(/^(refined_)?(.+?)(_ingot|_ore)?$/);
+        if (match) {
+          oreType = match[2] as OreType;
+          const meta = ORE_METADATA[oreType];
+          if (meta) {
+            color = meta.color;
+            rarity = meta.rarity;
+            if (key.includes('ore')) { label = meta.name; icon = '🪨'; }
+            else if (key.includes('refined')) { label = `Ref. ${meta.name.split(' ')[0]}`; icon = '✨'; }
+            else if (key.includes('ingot')) { label = `${meta.name.split(' ')[0]} Ingot`; icon = '🧱'; }
+          }
+        }
+      }
+
+      items.push({ key, amount, label, icon, color, rarity });
     });
+
+    return items
+      .filter(item => rarityFilter === 'All' || item.rarity === rarityFilter)
+      .filter(item => item.label.toLowerCase().includes(search.toLowerCase()))
+      .sort((a, b) => b.amount - a.amount);
   };
 
+  const items = getInventoryItems();
+
   return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-xs uppercase tracking-wider opacity-50">Marketplace</div>
-          <div className="text-lg font-bold text-amber-400">💰 ${state.currency.toFixed(2)}</div>
-        </div>
-        <button
-          onClick={sellAll}
-          className="px-3 py-1.5 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 transition-colors border border-amber-500/30"
-        >
-          Sell All
-        </button>
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 mb-3">
+        <input 
+          type="text" 
+          placeholder="Search inventory..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-amber-500/50 transition-all font-medium"
+        />
       </div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        {RESOURCE_ORDER.map(key => {
-          const r = RESOURCE_LABELS[key];
-          const amount = state.inventory[key];
-          const price = SELL_PRICES[key] || 0;
-          return (
-            <div
-              key={key}
-              className="flex items-center gap-3 p-2 rounded-lg border border-white/5 bg-white/5"
-            >
-              <span className="text-xl">{r.icon}</span>
-              <div className="flex-1 min-w-0">
-                <div className="text-xs truncate">{r.name}</div>
-                <div className="text-[10px] opacity-50">${price}/ea • {amount.toFixed(1)} owned</div>
-              </div>
-              <button
-                onClick={() => handleSell(key)}
-                disabled={Math.floor(amount) < 1}
-                className="px-2 py-1 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                Sell
-              </button>
-            </div>
-          );
-        })}
+      
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
+        {rarities.map(r => (
+          <button
+            key={r}
+            onClick={() => setRarityFilter(r)}
+            className={`whitespace-nowrap px-3 py-1 rounded-full text-[9px] uppercase font-bold tracking-wider transition-all border ${
+              rarityFilter === r 
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40 shadow-[0_0_10px_rgba(245,158,11,0.2)]' 
+                : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/90 border-white/5'
+            }`}
+          >
+            {r}
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-1">
+        {items.map(item => (
+          <div key={item.key} className="flex flex-col items-center p-2 rounded-lg border border-white/5 bg-white/5 relative group hover:bg-white/10 transition-colors">
+            <span className="text-xl" style={{ color: item.color }}>{item.icon}</span>
+            <span className="text-[9px] opacity-70 mt-1 truncate w-full text-center">{item.label}</span>
+            <span className="text-xs font-bold font-mono text-amber-100">{item.amount.toLocaleString()}</span>
+            {item.rarity !== 'Component' && (
+              <div 
+                className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" 
+                style={{ background: item.color, boxShadow: `0 0 5px ${item.color}` }} 
+                title={item.rarity} 
+              />
+            )}
+          </div>
+        ))}
+
+        {items.length === 0 && (
+          <div className="col-span-full py-8 text-center text-xs opacity-40 italic flex flex-col items-center gap-2">
+            <span className="text-2xl opacity-50">🔍</span>
+            No items found matching your filters
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-const RECIPES = [
-  { name: 'Iron Ingot', icon: '🧱', input: 'refined_iron' as ResourceKey, inputAmount: 10, output: 'iron_ingot' as ResourceKey, outputAmount: 5 },
-  { name: 'Copper Ingot', icon: '🥉', input: 'refined_copper' as ResourceKey, inputAmount: 10, output: 'copper_ingot' as ResourceKey, outputAmount: 5 },
-];
+
 
 function CraftingPanel() {
   const { state, dispatch } = useGame();
+  const [search, setSearch] = useState('');
 
-  const craft = (recipe: typeof RECIPES[0]) => {
-    if (state.inventory[recipe.input] >= recipe.inputAmount) {
-      // Manual craft: consume input, produce output
-      dispatch({ type: 'SELL', resource: recipe.input, amount: 0 }); // trigger re-render
-      // We'll add a CRAFT action
-    }
-  };
+  const recipes = [
+    { name: 'Copper Wire', icon: '➰', input: 'copper_ingot', inputAmount: 1, output: 'copper_wire', outputAmount: 5 },
+    { name: 'Circuit Board', icon: '📟', input: 'copper_wire', inputAmount: 10, output: 'circuit_board', outputAmount: 1 },
+    ...ORES.map(ore => ({
+      name: `${ORE_METADATA[ore].name.split(' ')[0]} Ingot`,
+      icon: '🧱',
+      input: `refined_${ore}`,
+      inputAmount: 10,
+      output: `${ore}_ingot`,
+      outputAmount: 5
+    }))
+  ];
+
+  const filteredRecipes = recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.input.toLowerCase().includes(search.toLowerCase()));
 
   return (
-    <div>
-      <div className="text-xs uppercase tracking-wider opacity-50 mb-3">Manual Crafting</div>
-      <div className="text-[11px] opacity-40 mb-3">
-        💡 Tip: Place Foundries on the grid for automatic crafting!
+    <div className="flex flex-col h-full">
+      <div className="flex items-center gap-2 mb-3">
+        <input 
+          type="text" 
+          placeholder="Search recipes..." 
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="flex-1 bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-white/30 outline-none focus:border-emerald-500/50 transition-all font-medium"
+        />
       </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        {RECIPES.map(recipe => {
-          const canCraft = state.inventory[recipe.input] >= recipe.inputAmount;
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 scrollbar-thin flex-1 min-h-[250px]">
+        {filteredRecipes.map(recipe => {
+          const canCraft = (state.inventory[recipe.input as ResourceKey] || 0) >= recipe.inputAmount;
           return (
-            <div
-              key={recipe.name}
-              className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5"
-            >
-              <span className="text-2xl">{recipe.icon}</span>
-              <div className="flex-1">
-                <div className="text-sm font-medium">{recipe.name}</div>
-                <div className="text-[10px] opacity-50">
-                  {recipe.inputAmount}x {RESOURCE_LABELS[recipe.input].name} → {recipe.outputAmount}x
-                </div>
-              </div>
-              <button
-                onClick={() => dispatch({ type: 'CRAFT', inputResource: recipe.input, inputAmount: recipe.inputAmount, outputResource: recipe.output, outputAmount: recipe.outputAmount })}
-                disabled={!canCraft}
-                className="px-3 py-1.5 rounded text-xs font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-              >
-                Craft
-              </button>
+            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
+               <span className="text-2xl">{recipe.icon}</span>
+               <div className="flex-1">
+                 <div className="text-xs font-bold leading-none">{recipe.name}</div>
+                 <div className="text-[9px] opacity-40 mt-1 uppercase">
+                   {recipe.inputAmount}x {recipe.input.split('_')[0]} → {recipe.outputAmount}x
+                 </div>
+               </div>
+               <button
+                 onClick={() => dispatch({ type: 'CRAFT', inputResource: recipe.input, inputAmount: recipe.inputAmount, outputResource: recipe.output, outputAmount: recipe.outputAmount })}
+                 disabled={!canCraft}
+                 className="px-2 py-1.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-10 border border-emerald-500/20"
+               >
+                 Craft
+               </button>
             </div>
           );
         })}
+        {filteredRecipes.length === 0 && (
+          <div className="col-span-full py-8 text-center text-xs opacity-40 italic">No recipes match your search.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function FactoryPanel() {
+  const { state, dispatch } = useGame();
+
+  const buildingCounts = state.activeBuildings.reduce((acc, coords) => {
+    const tile = state.grid[coords.y][coords.x];
+    if (tile.building) {
+      acc[tile.building.type] = (acc[tile.building.type] || 0) + 1;
+      if (tile.building.type === 'refinery') acc.refining_cap += (REFINERY_SPEED[tile.building.level - 1] * 2);
+      else if (tile.building.type === 'foundry') acc.smelting_cap += (FOUNDRY_SPEED[tile.building.level - 1] * 2);
+    }
+    return acc;
+  }, { miner: 0, refinery: 0, foundry: 0, refining_cap: 0, smelting_cap: 0 });
+
+  return (
+    <div className="space-y-4 overflow-y-auto pr-1 scrollbar-thin h-full min-h-[250px]">
+      <div className="text-xs uppercase tracking-wider opacity-50 text-center">Factory Overview</div>
+      <div className="grid grid-cols-3 gap-2">
+        {[
+          { icon: '⛏️', label: 'Miners', count: buildingCounts.miner },
+          { icon: '🏭', label: 'Refineries', count: buildingCounts.refinery },
+          { icon: '🔥', label: 'Foundries', count: buildingCounts.foundry },
+        ].map(s => (
+          <div key={s.label} className="flex flex-col items-center p-2 rounded-lg bg-white/5 border border-white/10">
+            <span className="text-lg">{s.icon}</span>
+            <span className="text-[9px] opacity-40 uppercase">{s.label}</span>
+            <span className="text-sm font-bold font-mono">{s.count}</span>
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <button
+          onClick={() => dispatch({ type: 'GLOBAL_BATCH_PROCESS', processType: 'refine' })}
+          className="py-3 rounded-lg bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 font-bold hover:bg-cyan-500/30 transition-all text-sm"
+        >
+          ✨ Refine All
+          <div className="text-[9px] font-normal opacity-60 uppercase mt-0.5">Cap: {buildingCounts.refining_cap} ores</div>
+        </button>
+        <button
+          onClick={() => dispatch({ type: 'GLOBAL_BATCH_PROCESS', processType: 'smelt' })}
+          className="py-3 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold hover:bg-amber-500/30 transition-all text-sm"
+        >
+          🧱 Smelt All
+          <div className="text-[9px] font-normal opacity-60 uppercase mt-0.5">Cap: {Math.floor(buildingCounts.smelting_cap / FOUNDRY_INPUT)} batches</div>
+        </button>
       </div>
     </div>
   );

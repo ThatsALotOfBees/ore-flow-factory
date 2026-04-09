@@ -3,6 +3,7 @@ import { GameState } from './types';
 import { GameAction, gameReducer, createInitialState } from './reducer';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface GameContextValue {
   state: GameState;
@@ -14,9 +15,16 @@ const GameContext = createContext<GameContextValue | null>(null);
 
 export function GameProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [loaded, setLoaded] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+
+  // Track state in a ref so the save interval doesn't reset every second on TICK
+  const stateRef = React.useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Load save from Supabase on mount
   useEffect(() => {
@@ -39,13 +47,18 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
     if (!user || !loaded) return;
     const id = setInterval(async () => {
       setSaving(true);
-      await supabase
+      const { error } = await supabase
         .from('game_saves')
-        .upsert({ user_id: user.id, save_data: state as any }, { onConflict: 'user_id' });
+        .upsert({ user_id: user.id, save_data: stateRef.current as any }, { onConflict: 'user_id' });
+      
+      if (error) {
+        console.error("Auto-Save Error:", error);
+        toast({ title: 'Save Failed', description: error.message, variant: 'destructive' });
+      }
       setSaving(false);
-    }, 15000);
+    }, 3000);
     return () => clearInterval(id);
-  }, [user, loaded, state]);
+  }, [user, loaded]);
 
   // Game tick every 1 second
   useEffect(() => {
