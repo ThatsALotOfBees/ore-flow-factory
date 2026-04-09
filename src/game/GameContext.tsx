@@ -1,36 +1,51 @@
 import React, { createContext, useContext, useReducer, useEffect, useCallback } from 'react';
 import { GameState } from './types';
 import { GameAction, gameReducer, createInitialState } from './reducer';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
 
 interface GameContextValue {
   state: GameState;
   dispatch: React.Dispatch<GameAction>;
+  saving: boolean;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
 
-const SAVE_KEY = 'grid-mining-save';
-
-function loadSave(): GameState | null {
-  try {
-    const raw = localStorage.getItem(SAVE_KEY);
-    if (raw) return JSON.parse(raw) as GameState;
-  } catch { /* ignore */ }
-  return null;
-}
-
 export function GameProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(gameReducer, null, () => {
-    return loadSave() || createInitialState();
-  });
+  const { user } = useAuth();
+  const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
+  const [loaded, setLoaded] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
 
-  // Auto-save every 10 seconds
+  // Load save from Supabase on mount
   useEffect(() => {
-    const id = setInterval(() => {
-      localStorage.setItem(SAVE_KEY, JSON.stringify(state));
-    }, 10000);
+    if (!user) return;
+    (async () => {
+      const { data } = await supabase
+        .from('game_saves')
+        .select('save_data')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (data?.save_data) {
+        dispatch({ type: 'LOAD', state: data.save_data as unknown as GameState });
+      }
+      setLoaded(true);
+    })();
+  }, [user]);
+
+  // Auto-save every 15 seconds
+  useEffect(() => {
+    if (!user || !loaded) return;
+    const id = setInterval(async () => {
+      setSaving(true);
+      await supabase
+        .from('game_saves')
+        .upsert({ user_id: user.id, save_data: state as any }, { onConflict: 'user_id' });
+      setSaving(false);
+    }, 15000);
     return () => clearInterval(id);
-  }, [state]);
+  }, [user, loaded, state]);
 
   // Game tick every 1 second
   useEffect(() => {
@@ -39,7 +54,7 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <GameContext.Provider value={{ state, dispatch }}>
+    <GameContext.Provider value={{ state, dispatch, saving }}>
       {children}
     </GameContext.Provider>
   );

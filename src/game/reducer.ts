@@ -13,6 +13,7 @@ export type GameAction =
   | { type: 'TOGGLE_BUILDING'; x: number; y: number }
   | { type: 'SET_ORE_TARGET'; x: number; y: number; oreTarget: 'iron' | 'copper' }
   | { type: 'SELL'; resource: ResourceKey; amount: number }
+  | { type: 'CRAFT'; inputResource: ResourceKey; inputAmount: number; outputResource: ResourceKey; outputAmount: number }
   | { type: 'TICK' }
   | { type: 'LOAD'; state: GameState }
   | { type: 'RESET' };
@@ -61,7 +62,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const tile = state.grid[y][x];
       if (!tile.building || tile.building.level >= 3) return state;
 
-      const nextLevel = tile.building.level; // index for next level cost
+      const nextLevel = tile.building.level;
       const cost = UPGRADE_COSTS[tile.building.type][nextLevel];
       if (state.currency < cost) return state;
 
@@ -120,11 +121,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
+    case 'CRAFT': {
+      const { inputResource, inputAmount, outputResource, outputAmount } = action;
+      if (state.inventory[inputResource] < inputAmount) return state;
+      return {
+        ...state,
+        inventory: {
+          ...state.inventory,
+          [inputResource]: state.inventory[inputResource] - inputAmount,
+          [outputResource]: state.inventory[outputResource] + outputAmount,
+        },
+      };
+    }
+
     case 'TICK': {
       const inv: Inventory = { ...state.inventory };
       const ticksPerHour = 3600;
 
-      // Miners produce
       for (const row of state.grid) {
         for (const tile of row) {
           if (tile.building?.type === 'miner' && tile.building.active) {
@@ -135,7 +148,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // Refineries process
       for (const row of state.grid) {
         for (const tile of row) {
           if (tile.building?.type === 'refinery' && tile.building.active) {
@@ -153,7 +165,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
       }
 
-      // Foundries convert
       for (const row of state.grid) {
         for (const tile of row) {
           if (tile.building?.type === 'foundry' && tile.building.active) {
@@ -161,7 +172,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
             const ingotKey: ResourceKey = `${ore}_ingot` as ResourceKey;
             const speed = FOUNDRY_SPEED[tile.building.level - 1];
-            const batchesPerTick = (speed) / ticksPerHour;
+            const batchesPerTick = speed / ticksPerHour;
             const neededInput = FOUNDRY_INPUT * batchesPerTick;
             const consumed = Math.min(inv[refKey], neededInput);
             if (consumed > 0) {
