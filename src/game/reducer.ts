@@ -26,7 +26,8 @@ export type GameAction =
   | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number }
   | { type: 'SELECT_MACHINE'; machineId: string | null }
   | { type: 'CRAFT_MACHINE'; recipeId: string }
-  | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string };
+  | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string }
+  | { type: 'PLACE_BUILDING_BULK'; tiles: { x: number; y: number }[]; buildingType: BuildingType };
 
 export function createInitialState(): GameState {
   const seed = Date.now();
@@ -87,6 +88,51 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         currency: state.currency - cost.currency,
         totalSpent: (state.totalSpent || 0) + cost.currency,
         activeBuildings: [...state.activeBuildings, { x, y }],
+      };
+    }
+
+    case 'PLACE_BUILDING_BULK': {
+      const cost = BUILDING_COSTS[action.buildingType][0];
+      const validTiles = action.tiles.filter(({ x, y }) => {
+        const tile = state.grid[y]?.[x];
+        return tile && !tile.building && (action.buildingType !== 'miner' || tile.oreType !== null);
+      });
+      if (validTiles.length === 0) return state;
+
+      const totalCurrency = cost.currency * validTiles.length;
+      if (state.currency < totalCurrency) return state;
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          if ((state.inventory[res as ResourceKey] || 0) < (amt as number) * validTiles.length) return state;
+        }
+      }
+
+      const newGrid = state.grid.map(row => [...row]);
+      const newInv = { ...state.inventory };
+      const newActiveBuildings = [...state.activeBuildings];
+
+      for (const { x, y } of validTiles) {
+        newGrid[y] = [...newGrid[y]];
+        newGrid[y][x] = {
+          ...newGrid[y][x],
+          building: { type: action.buildingType, level: 1, active: true },
+        };
+        newActiveBuildings.push({ x, y });
+      }
+
+      if (cost.resources) {
+        for (const [res, amt] of Object.entries(cost.resources)) {
+          newInv[res as ResourceKey] = (newInv[res as ResourceKey] || 0) - amt * validTiles.length;
+        }
+      }
+
+      return {
+        ...state,
+        grid: newGrid,
+        inventory: newInv,
+        currency: state.currency - totalCurrency,
+        totalSpent: (state.totalSpent || 0) + totalCurrency,
+        activeBuildings: newActiveBuildings,
       };
     }
 
