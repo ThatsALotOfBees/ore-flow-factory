@@ -194,4 +194,5 @@ export const REFINERY_MULTIPLIERS = [1.2, 1.5, 2.0];
 export const REFINERY_SPEED = [60, 120, 240];
 export const FOUNDRY_INPUT = 10;
 export const FOUNDRY_OUTPUT = 5;
+export const FOUNDRY_OUTPUT_MULTIPLIERS = [1.0, 1.4, 2.0]; // Lv1: 5, Lv2: 7, Lv3: 10 ingots per batch
 export const FOUNDRY_SPEED = [60, 120, 240];
