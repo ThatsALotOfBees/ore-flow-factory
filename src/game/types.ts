@@ -54,13 +54,15 @@ export interface Tile {
   building: Building | null;
 }
 
-export type BuildingType = 'miner' | 'refinery' | 'foundry';
+export type BuildingType = 'miner' | 'refinery' | 'foundry' | 'machine';
 
 export interface Building {
   type: BuildingType;
-  level: number; // 1-3
+  level: number; // 1-3 for miners/refineries/foundries, ignored for machines
   active: boolean;
   oreTarget?: OreType;
+  // For machines
+  machineId?: string;
 }
 
 // Generate resource keys for all 25 ores
@@ -70,7 +72,18 @@ export type ResourceKey =
   | `${OreType}_ingot`
   | AlloyType
   | 'copper_wire'
-  | 'circuit_board';
+  | 'circuit_board'
+  // Machines
+  | 'manual_assembler'
+  | 'basic_press'
+  | 'wire_drawer'
+  | 'alloy_smelter'
+  | 'circuit_assembler'
+  | 'precision_lathe'
+  | 'chemical_processor'
+  | 'nano_assembler'
+  | 'quantum_fabricator'
+  | 'singularity_forge';
 
 export type Inventory = Partial<Record<ResourceKey, number>>;
 
@@ -81,6 +94,10 @@ export interface GameState {
   seed: number;
   tickCount: number;
   activeBuildings: { x: number; y: number }[];
+  // Track placed machines separately
+  activeMachines: { id: string; x: number; y: number }[];
+  // Currently selected machine for placement (null if none)
+  selectedMachineId: string | null;
   totalSpent: number; // Tracks all currency spent on buildings/upgrades for rebirth refund
 }
 
