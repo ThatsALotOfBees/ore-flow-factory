@@ -313,7 +313,13 @@ function CraftingPanel() {
           );
         })}
         {activeTab === 'machines' && availableMachines.map((recipe: any) => {
-          const canCraft = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          const alreadyOwnsOne =
+            recipe.id === 'manual_assembler' &&
+            ((state.inventory['manual_assembler' as ResourceKey] || 0) >= 1 ||
+              state.activeMachines.some((m: any) => m.id === 'manual_assembler'));
+          const canCraft =
+            !alreadyOwnsOne &&
+            Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
           return (
             <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
               <span className="text-2xl">⚙️</span>

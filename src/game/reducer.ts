@@ -399,6 +399,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (!hasPrevInInventory && !hasPrevPlaced) return state;
       }
 
+      // Limit manual_assembler to 1 (free starter machine)
+      if (recipe.id === 'manual_assembler') {
+        const alreadyOwned = (state.inventory['manual_assembler' as ResourceKey] || 0) >= 1;
+        const alreadyPlaced = state.activeMachines.some(m => m.id === 'manual_assembler');
+        if (alreadyOwned || alreadyPlaced) return state;
+      }
+
       // Check inputs
       for (const [res, amt] of Object.entries(recipe.inputs)) {
         if ((state.inventory[res as ResourceKey] || 0) < amt) return state;
