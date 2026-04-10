@@ -104,7 +104,7 @@ export function TileContextMenu({ tile, x, y, onClose }: Props) {
   } else {
     const b = tile.building;
 
-    if (b.level < 3) {
+    if (b.type !== 'machine' && b.level < 3) {
       const cost = UPGRADE_COSTS[b.type][b.level];
       menuItems.push({
         label: `⬆️ Upgrade to Lv.${b.level + 1} (${formatCost(cost)})`,
@@ -113,7 +113,7 @@ export function TileContextMenu({ tile, x, y, onClose }: Props) {
       });
     }
 
-    if (b.type !== 'miner') {
+    if (b.type !== 'miner' && b.type !== 'machine') {
       const currentTarget = b.oreTarget ? ORE_METADATA[b.oreTarget as OreType].name : 'None';
       menuItems.push({
         label: `🔄 Target: ${currentTarget}`,
