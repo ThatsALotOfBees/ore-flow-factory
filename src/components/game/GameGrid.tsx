@@ -1,6 +1,7 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/game/GameContext';
 import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA, BUILDING_COSTS, REFINERY_SPEED, FOUNDRY_SPEED } from '@/game/types';
+import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from '@/game/machines';
 import { TileContextMenu } from './TileContextMenu';
 
 const TILE_SIZE = 40;
@@ -337,12 +338,46 @@ export function GameGrid() {
           ) : (
             <div className="font-bold text-white/40 italic">Empty Space</div>
           )}
-          {hoveredTile.building && (
-            <div className="mt-1 pt-1 border-t border-white/10">
-              <span className="capitalize">{hoveredTile.building.type}</span> Lv.{hoveredTile.building.level}
-              {!hoveredTile.building.active && <span className="text-red-400 ml-1">(OFF)</span>}
-            </div>
-          )}
+          {hoveredTile.building && (() => {
+            const b = hoveredTile.building;
+            if (b.type === 'machine') {
+              const machineRecipe = MACHINE_RECIPES.find(r => r.id === b.machineId);
+              const machineName = machineRecipe?.name ?? b.machineId ?? 'Machine';
+              const craftable = [
+                ...ELECTRONICS_RECIPES.filter(r => r.craftedIn === machineName),
+                ...MACHINE_RECIPES.filter(r => r.craftedIn === machineName),
+              ];
+              return (
+                <div className="mt-1 pt-1 border-t border-white/10">
+                  <div className="font-bold text-amber-400 flex items-center gap-1">
+                    ⚙️ {machineName}
+                  </div>
+                  {craftable.length > 0 ? (
+                    <div className="mt-1.5">
+                      <div className="text-[9px] uppercase font-bold opacity-30 tracking-wide mb-1">Produces</div>
+                      {craftable.slice(0, 5).map(r => (
+                        <div key={r.id} className="text-[10px] opacity-60 flex items-center gap-1">
+                          <span className="opacity-40">·</span> {r.name}
+                        </div>
+                      ))}
+                      {craftable.length > 5 && (
+                        <div className="text-[10px] opacity-30">+{craftable.length - 5} more</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="text-[10px] opacity-40 mt-0.5">Used for advanced crafting</div>
+                  )}
+                  {!b.active && <div className="text-red-400 text-[10px] mt-1">(Paused)</div>}
+                </div>
+              );
+            }
+            return (
+              <div className="mt-1 pt-1 border-t border-white/10">
+                <span className="capitalize">{b.type}</span> Lv.{b.level}
+                {!b.active && <span className="text-red-400 ml-1">(OFF)</span>}
+              </div>
+            );
+          })()}
         </div>
       )}
 
