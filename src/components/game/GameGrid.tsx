@@ -1,22 +1,24 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/game/GameContext';
-import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA } from '@/game/types';
+import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA, BUILDING_COSTS } from '@/game/types';
 import { TileContextMenu } from './TileContextMenu';
 
 const TILE_SIZE = 40;
 
-const TileItem = React.memo(({ 
-  tile, 
-  onHover, 
+const TileItem = React.memo(({
+  tile,
+  onHover,
   onContextMenu,
   onClick,
-  isGhost
-}: { 
-  tile: Tile; 
+  isGhost,
+  isSelected,
+}: {
+  tile: Tile;
   onHover: (e: React.MouseEvent, tile: Tile) => void;
   onContextMenu: (e: React.MouseEvent, tile: Tile) => void;
   onClick: (e: React.MouseEvent, tile: Tile) => void;
   isGhost?: boolean;
+  isSelected?: boolean;
 }) => {
   const getTileColor = (tile: Tile): string => {
     if (tile.building) {
@@ -79,6 +81,9 @@ const TileItem = React.memo(({
           )}
         </span>
       )}
+      {isSelected && (
+        <div className="absolute inset-0 border-2 border-amber-400 bg-amber-400/10 pointer-events-none" />
+      )}
     </div>
   );
 });
@@ -97,6 +102,7 @@ export function GameGrid() {
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [contextMenu, setContextMenu] = useState<{ tile: Tile; x: number; y: number } | null>(null);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+  const [selectedTiles, setSelectedTiles] = useState<Set<string>>(new Set());
 
   // Use ResizeObserver for more reliable dimension tracking
   useEffect(() => {
@@ -145,6 +151,12 @@ export function GameGrid() {
     return () => window.removeEventListener('click', close);
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setSelectedTiles(new Set()); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   const handleTileHover = useCallback((e: React.MouseEvent, tile: Tile) => {
     setHoveredTile(tile);
     setTooltipPos({ x: e.clientX, y: e.clientY });
@@ -164,6 +176,17 @@ export function GameGrid() {
 
   const handleContextMenu = useCallback((e: React.MouseEvent, tile: Tile) => {
     e.preventDefault();
+    if (e.shiftKey) {
+      if (!tile.oreType || tile.building) return;
+      const key = `${tile.x},${tile.y}`;
+      setSelectedTiles(prev => {
+        const next = new Set(prev);
+        next.has(key) ? next.delete(key) : next.add(key);
+        return next;
+      });
+      return;
+    }
+    setSelectedTiles(new Set());
     setContextMenu({ tile, x: e.clientX, y: e.clientY });
   }, []);
 
@@ -237,7 +260,8 @@ export function GameGrid() {
       >
         {visibleTiles.map((tile) => {
           const isGhost = hoveredTile?.x === tile.x && hoveredTile?.y === tile.y && state.selectedMachineId !== null && !tile.building;
-          
+          const isSelected = selectedTiles.has(`${tile.x},${tile.y}`);
+
           return (
             <React.Fragment key={`${tile.x}-${tile.y}`}>
               <TileItem
@@ -245,6 +269,7 @@ export function GameGrid() {
                 onHover={handleTileHover}
                 onContextMenu={handleContextMenu}
                 onClick={handleTileClick}
+                isSelected={isSelected}
               />
               {isGhost && (
                  <TileItem
@@ -316,6 +341,48 @@ export function GameGrid() {
           onClose={() => setContextMenu(null)}
         />
       )}
+
+      {/* Multi-select miner placement panel */}
+      {selectedTiles.size > 0 && (() => {
+        const cost = BUILDING_COSTS.miner[0];
+        const total = cost.currency * selectedTiles.size;
+        const canAfford = state.currency >= total;
+        return (
+          <div
+            className="fixed bottom-[72px] left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-xl border shadow-2xl"
+            style={{ background: 'hsl(220, 25%, 12%)', borderColor: 'hsl(220, 15%, 30%)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <span className="text-xs font-bold text-amber-400">
+              {selectedTiles.size} tile{selectedTiles.size > 1 ? 's' : ''} selected
+            </span>
+            <span className="text-xs opacity-30">·</span>
+            <span className={`text-xs font-mono font-bold ${canAfford ? 'text-green-400' : 'text-red-400'}`}>
+              ${total.toLocaleString()} total
+            </span>
+            <button
+              disabled={!canAfford}
+              onClick={() => {
+                const tiles = Array.from(selectedTiles).map(k => {
+                  const [x, y] = k.split(',').map(Number);
+                  return { x, y };
+                });
+                dispatch({ type: 'PLACE_BUILDING_BULK', tiles, buildingType: 'miner' });
+                setSelectedTiles(new Set());
+              }}
+              className="px-3 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-400 hover:bg-amber-500/30 disabled:opacity-20 border border-amber-500/20"
+            >
+              ⛏️ Place Miners
+            </button>
+            <button
+              onClick={() => setSelectedTiles(new Set())}
+              className="px-2 py-1 rounded-lg text-xs opacity-40 hover:opacity-80 border border-white/10"
+            >
+              Cancel
+            </button>
+          </div>
+        );
+      })()}
     </div>
   );
 }
