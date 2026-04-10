@@ -1,6 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { useGame } from '@/game/GameContext';
-import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA, BUILDING_COSTS } from '@/game/types';
+import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA, BUILDING_COSTS, REFINERY_SPEED, FOUNDRY_SPEED } from '@/game/types';
 import { TileContextMenu } from './TileContextMenu';
 
 const TILE_SIZE = 40;
@@ -12,6 +12,7 @@ const TileItem = React.memo(({
   onClick,
   isGhost,
   isSelected,
+  tickCount,
 }: {
   tile: Tile;
   onHover: (e: React.MouseEvent, tile: Tile) => void;
@@ -19,6 +20,7 @@ const TileItem = React.memo(({
   onClick: (e: React.MouseEvent, tile: Tile) => void;
   isGhost?: boolean;
   isSelected?: boolean;
+  tickCount?: number;
 }) => {
   const getTileColor = (tile: Tile): string => {
     if (tile.building) {
@@ -84,6 +86,17 @@ const TileItem = React.memo(({
       {isSelected && (
         <div className="absolute inset-0 border-2 border-amber-400 bg-amber-400/10 pointer-events-none" />
       )}
+      {tile.building?.active && tickCount !== undefined && (tile.building.type === 'refinery' || tile.building.type === 'foundry') && (() => {
+        const speeds = tile.building.type === 'refinery' ? REFINERY_SPEED : FOUNDRY_SPEED;
+        const cycleLength = 3600 / speeds[tile.building.level - 1];
+        const progress = (tickCount % cycleLength) / cycleLength;
+        const color = tile.building.type === 'refinery' ? '#38bdf8' : '#fb923c';
+        return (
+          <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-black/40 pointer-events-none">
+            <div className="h-full transition-none" style={{ width: `${progress * 100}%`, background: color }} />
+          </div>
+        );
+      })()}
     </div>
   );
 });
@@ -270,6 +283,7 @@ export function GameGrid() {
                 onContextMenu={handleContextMenu}
                 onClick={handleTileClick}
                 isSelected={isSelected}
+                tickCount={state.tickCount}
               />
               {isGhost && (
                  <TileItem

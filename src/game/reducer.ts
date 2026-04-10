@@ -2,7 +2,7 @@ import {
   GameState, BuildingType, ResourceKey, Inventory, GRID_SIZE,
   BUILDING_COSTS, UPGRADE_COSTS, SELL_PRICES, ORES,
   MINER_BASE_RATE, REFINERY_MULTIPLIERS, REFINERY_SPEED,
-  FOUNDRY_INPUT, FOUNDRY_OUTPUT, FOUNDRY_SPEED,
+  FOUNDRY_INPUT, FOUNDRY_OUTPUT, FOUNDRY_OUTPUT_MULTIPLIERS, FOUNDRY_SPEED,
 } from './types';
 import { generateGrid } from './grid';
 import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from './machines';
@@ -299,13 +299,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           const refKey: ResourceKey = `refined_${ore}` as ResourceKey;
           const ingotKey: ResourceKey = `${ore}_ingot` as ResourceKey;
           const speed = FOUNDRY_SPEED[b.level - 1];
+          const outMult = FOUNDRY_OUTPUT_MULTIPLIERS[b.level - 1];
           const batchesPerTick = speed / ticksPerHour;
           const neededInput = FOUNDRY_INPUT * batchesPerTick;
           const consumed = Math.min(inv[refKey] || 0, neededInput);
           if (consumed > 0) {
             const ratio = consumed / neededInput;
             inv[refKey] = (inv[refKey] || 0) - consumed;
-            inv[ingotKey] = (inv[ingotKey] || 0) + (FOUNDRY_OUTPUT * batchesPerTick * ratio);
+            inv[ingotKey] = (inv[ingotKey] || 0) + (FOUNDRY_OUTPUT * outMult * batchesPerTick * ratio);
           }
         }
       }
