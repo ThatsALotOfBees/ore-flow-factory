@@ -5,6 +5,7 @@ import {
   FOUNDRY_INPUT, FOUNDRY_OUTPUT, FOUNDRY_SPEED,
 } from './types';
 import { generateGrid } from './grid';
+import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from './machines';
 
 export type GameAction =
   | { type: 'PLACE_BUILDING'; x: number; y: number; buildingType: BuildingType }
@@ -22,7 +23,10 @@ export type GameAction =
   | { type: 'MARKET_SELL'; resource: string; amount: number }
   | { type: 'MARKET_BUY'; resource: string; amount: number; totalCost: number }
   | { type: 'MARKET_CLAIM_CASH'; amount: number }
-  | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number };
+  | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number }
+  | { type: 'SELECT_MACHINE'; machineId: string | null }
+  | { type: 'CRAFT_MACHINE'; recipeId: string }
+  | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string };
 
 export function createInitialState(): GameState {
   const seed = Date.now();
@@ -33,6 +37,8 @@ export function createInitialState(): GameState {
     seed,
     tickCount: 0,
     activeBuildings: [],
+    activeMachines: [],
+    selectedMachineId: null,
     totalSpent: 0,
   };
 }
@@ -346,7 +352,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         currency: state.currency - 1000 + refund,
         totalSpent: 0,
         activeBuildings: [],
-        inventory: {}, // Wipe inventory as miners are sold
+        activeMachines: [],
+        selectedMachineId: null,
+        inventory: state.inventory, // Keep inventory when buying a new plot
       };
     }
 
@@ -372,10 +380,75 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
 
-    case 'MARKET_CLAIM_CASH': {
+    case 'SELECT_MACHINE': {
+      return { ...state, selectedMachineId: action.machineId };
+    }
+
+    case 'CRAFT_MACHINE': {
+      const recipe = MACHINE_RECIPES.find(r => r.id === action.recipeId);
+      if (!recipe) return state;
+
+      // Verification: Tier check
+      // Find the index of this machine in the recipe list
+      const recipeIndex = MACHINE_RECIPES.indexOf(recipe);
+      if (recipeIndex > 0) {
+        const prevMachine = MACHINE_RECIPES[recipeIndex - 1];
+        // Must have at least one of the previous machine to unlock (either in inventory or placed)
+        const hasPrevInInventory = (state.inventory[prevMachine.id as ResourceKey] || 0) > 0;
+        const hasPrevPlaced = state.activeMachines.some(m => m.id === prevMachine.id);
+        if (!hasPrevInInventory && !hasPrevPlaced) return state;
+      }
+
+      // Check inputs
+      for (const [res, amt] of Object.entries(recipe.inputs)) {
+        if ((state.inventory[res as ResourceKey] || 0) < amt) return state;
+      }
+
+      const newInv = { ...state.inventory };
+      for (const [res, amt] of Object.entries(recipe.inputs)) {
+        newInv[res as ResourceKey] = (newInv[res as ResourceKey] || 0) - amt;
+      }
+      newInv[recipe.id as ResourceKey] = (newInv[recipe.id as ResourceKey] || 0) + (recipe.outputAmount || 1);
+
       return {
         ...state,
-        currency: state.currency + action.amount,
+        inventory: newInv,
+      };
+    }
+
+    case 'PLACE_MACHINE': {
+      const { x, y, machineId } = action;
+      const tile = state.grid[y][x];
+      
+      // Ensure tile is empty and valid
+      if (tile.building || state.activeMachines.some(m => m.x === x && m.y === y)) return state;
+      
+      // Check if player has the machine in inventory
+      if ((state.inventory[machineId as ResourceKey] || 0) < 1) return state;
+
+      const newInv = { ...state.inventory };
+      newInv[machineId as ResourceKey] = (newInv[machineId as ResourceKey] || 0) - 1;
+
+      const newActiveMachines = [...state.activeMachines, { id: machineId, x, y }];
+      
+      const newGrid = [...state.grid];
+      newGrid[y] = [...newGrid[y]];
+      newGrid[y][x] = {
+        ...newGrid[y][x],
+        building: {
+          type: 'machine',
+          level: 1,
+          active: true,
+          machineId: machineId, // Added machineId specifically for building state
+        } as any, // Cast to any because building type is extended but TS might be picky
+      };
+
+      return {
+        ...state,
+        grid: newGrid,
+        inventory: newInv,
+        activeMachines: newActiveMachines,
+        selectedMachineId: null, // Reset selection after placement
       };
     }
 

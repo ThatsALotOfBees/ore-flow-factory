@@ -134,6 +134,7 @@ export const BUILDING_COSTS: Record<BuildingType, Cost[]> = {
     { currency: 350 },
     { currency: 500 }
   ],
+  machine: []
 };
 
 export const UPGRADE_COSTS: Record<BuildingType, Cost[]> = {

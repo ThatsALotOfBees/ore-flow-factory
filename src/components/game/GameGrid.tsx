@@ -8,11 +8,15 @@ const TILE_SIZE = 40;
 const TileItem = React.memo(({ 
   tile, 
   onHover, 
-  onContextMenu 
+  onContextMenu,
+  onClick,
+  isGhost
 }: { 
   tile: Tile; 
   onHover: (e: React.MouseEvent, tile: Tile) => void;
   onContextMenu: (e: React.MouseEvent, tile: Tile) => void;
+  onClick: (e: React.MouseEvent, tile: Tile) => void;
+  isGhost?: boolean;
 }) => {
   const getTileColor = (tile: Tile): string => {
     if (tile.building) {
@@ -44,6 +48,7 @@ const TileItem = React.memo(({
       case 'miner': return '⛏️';
       case 'refinery': return '🧪';
       case 'foundry': return '🔥';
+      case 'machine': return '⚙️';
     }
   };
 
@@ -51,17 +56,18 @@ const TileItem = React.memo(({
     <div
       className={`absolute border border-white/5 flex items-center justify-center text-xs transition-colors ${
         tile.oreType && ORE_METADATA[tile.oreType]?.rarity === 'Mythical' ? 'mythical-ore' : ''
-      }`}
+      } ${isGhost ? 'opacity-50 pointer-events-none scale-90' : ''}`}
       style={{
         left: tile.x * TILE_SIZE,
         top: tile.y * TILE_SIZE,
         width: TILE_SIZE,
         height: TILE_SIZE,
-        backgroundColor: getTileColor(tile),
+        backgroundColor: isGhost ? 'rgba(255, 255, 255, 0.2)' : getTileColor(tile),
       }}
       onMouseEnter={(e) => onHover(e, tile)}
       onMouseMove={(e) => onHover(e, tile)}
       onContextMenu={(e) => onContextMenu(e, tile)}
+      onClick={(e) => onClick(e, tile)}
     >
       {tile.building && (
         <span className="text-lg leading-none drop-shadow-md pointer-events-none">
@@ -80,7 +86,7 @@ const TileItem = React.memo(({
 TileItem.displayName = 'TileItem';
 
 export function GameGrid() {
-  const { state } = useGame();
+  const { state, dispatch } = useGame();
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(0.8);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -143,6 +149,18 @@ export function GameGrid() {
     setHoveredTile(tile);
     setTooltipPos({ x: e.clientX, y: e.clientY });
   }, []);
+
+  const handleTileClick = useCallback((e: React.MouseEvent, tile: Tile) => {
+    e.preventDefault();
+    if (dragging) return;
+    
+    // Check if we have a machine selected to place
+    if (state.selectedMachineId) {
+      if (!tile.building && !state.activeMachines.some(m => m.x === tile.x && m.y === tile.y)) {
+        dispatch({ type: 'PLACE_MACHINE', x: tile.x, y: tile.y, machineId: state.selectedMachineId });
+      }
+    }
+  }, [dragging, state.selectedMachineId, state.activeMachines, dispatch]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent, tile: Tile) => {
     e.preventDefault();
@@ -217,14 +235,29 @@ export function GameGrid() {
           marginTop: -gridHeight / 2,
         }}
       >
-        {visibleTiles.map((tile) => (
-          <TileItem
-            key={`${tile.x}-${tile.y}`}
-            tile={tile}
-            onHover={handleTileHover}
-            onContextMenu={handleContextMenu}
-          />
-        ))}
+        {visibleTiles.map((tile) => {
+          const isGhost = hoveredTile?.x === tile.x && hoveredTile?.y === tile.y && state.selectedMachineId !== null && !tile.building;
+          
+          return (
+            <React.Fragment key={`${tile.x}-${tile.y}`}>
+              <TileItem
+                tile={tile}
+                onHover={handleTileHover}
+                onContextMenu={handleContextMenu}
+                onClick={handleTileClick}
+              />
+              {isGhost && (
+                 <TileItem
+                  tile={{ ...tile, building: { type: 'machine', level: 1, active: true } as any }}
+                  isGhost={true}
+                  onHover={() => {}}
+                  onContextMenu={() => {}}
+                  onClick={() => {}}
+                 />
+              )}
+            </React.Fragment>
+          );
+        })}
       </div>
 
       {/* Tooltip */}

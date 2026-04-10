@@ -3,6 +3,8 @@ import { useGame } from '@/game/GameContext';
 import { ResourceKey, SELL_PRICES, BUILDING_COSTS, REFINERY_SPEED, FOUNDRY_SPEED, FOUNDRY_INPUT, ORE_METADATA, ORES, OreType } from '@/game/types';
 import { MarketplacePanel } from './MarketplacePanel';
 import { AlloySmelterPanel } from './AlloySmelterPanel';
+import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from '@/game/machines';
+import { ParticleBurst } from './Animations';
 
 type InventoryTab = 'ores' | 'refined' | 'ingots' | 'electronics';
 
@@ -88,7 +90,7 @@ export function Hotbar() {
 }
 
 function InventoryPanel() {
-  const { state } = useGame();
+  const { state, dispatch } = useGame();
   const [search, setSearch] = useState('');
   const [rarityFilter, setRarityFilter] = useState<string>('All');
 
@@ -110,16 +112,25 @@ function InventoryPanel() {
       if (key === 'copper_wire') { icon = '➰'; label = 'Copper Wire'; }
       else if (key === 'circuit_board') { icon = '📟'; label = 'Circuit Board'; }
       else {
-        const match = key.match(/^(refined_)?(.+?)(_ingot|_ore)?$/);
-        if (match) {
-          oreType = match[2] as OreType;
-          const meta = ORE_METADATA[oreType];
-          if (meta) {
-            color = meta.color;
-            rarity = meta.rarity;
-            if (key.includes('ore')) { label = meta.name; icon = '🪨'; }
-            else if (key.includes('refined')) { label = `Ref. ${meta.name.split(' ')[0]}`; icon = '✨'; }
-            else if (key.includes('ingot')) { label = `${meta.name.split(' ')[0]} Ingot`; icon = '🧱'; }
+        // Check if it's a machine
+        const machine = MACHINE_RECIPES.find(m => m.id === key);
+        if (machine) {
+          label = machine.name;
+          icon = '⚙️';
+          rarity = 'Machine';
+          color = '#f59e0b'; // Amber
+        } else {
+          const match = key.match(/^(refined_)?(.+?)(_ingot|_ore)?$/);
+          if (match) {
+            oreType = match[2] as OreType;
+            const meta = ORE_METADATA[oreType];
+            if (meta) {
+              color = meta.color;
+              rarity = meta.rarity;
+              if (key.includes('ore')) { label = meta.name; icon = '🪨'; }
+              else if (key.includes('refined')) { label = `Ref. ${meta.name.split(' ')[0]}`; icon = '✨'; }
+              else if (key.includes('ingot')) { label = `${meta.name.split(' ')[0]} Ingot`; icon = '🧱'; }
+            }
           }
         }
       }
@@ -164,20 +175,42 @@ function InventoryPanel() {
       </div>
 
       <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-[300px] overflow-y-auto pr-1">
-        {items.map(item => (
-          <div key={item.key} className="flex flex-col items-center p-2 rounded-lg border border-white/5 bg-white/5 relative group hover:bg-white/10 transition-colors">
-            <span className="text-xl" style={{ color: item.color }}>{item.icon}</span>
-            <span className="text-[9px] opacity-70 mt-1 truncate w-full text-center">{item.label}</span>
-            <span className="text-xs font-bold font-mono text-amber-100">{item.amount.toLocaleString()}</span>
-            {item.rarity !== 'Component' && (
-              <div 
-                className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" 
-                style={{ background: item.color, boxShadow: `0 0 5px ${item.color}` }} 
-                title={item.rarity} 
-              />
-            )}
-          </div>
-        ))}
+        {items.map(item => {
+          const isMachine = MACHINE_RECIPES.some(m => m.id === item.key);
+          const isSelected = state.selectedMachineId === item.key;
+          
+          return (
+            <div 
+              key={item.key} 
+              onClick={() => {
+                if (isMachine) {
+                  dispatch({ type: 'SELECT_MACHINE', machineId: isSelected ? null : item.key });
+                }
+              }}
+              className={`flex flex-col items-center p-2 rounded-lg border transition-all relative group cursor-pointer ${
+                isSelected 
+                  ? 'bg-amber-500/20 border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' 
+                  : 'bg-white/5 border-white/5 hover:bg-white/10'
+              }`}
+            >
+              <span className="text-xl" style={{ color: item.color }}>{item.icon}</span>
+              <span className="text-[9px] opacity-70 mt-1 truncate w-full text-center">{item.label}</span>
+              <span className="text-xs font-bold font-mono text-amber-100">{item.amount.toLocaleString()}</span>
+              {isMachine && (
+                <div className="absolute -top-1 -right-1 bg-amber-500 text-[8px] font-black px-1 rounded shadow-lg text-black uppercase tracking-tighter">
+                  Place
+                </div>
+              )}
+              {item.rarity !== 'Component' && !isMachine && (
+                <div 
+                  className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full opacity-50 shadow-sm" 
+                  style={{ background: item.color, boxShadow: `0 0 5px ${item.color}` }} 
+                  title={item.rarity} 
+                />
+              )}
+            </div>
+          );
+        })}
 
         {items.length === 0 && (
           <div className="col-span-full py-8 text-center text-xs opacity-40 italic flex flex-col items-center gap-2">
@@ -195,6 +228,14 @@ function InventoryPanel() {
 function CraftingPanel() {
   const { state, dispatch } = useGame();
   const [search, setSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'basic' | 'machines' | 'electronics'>('basic');
+  const [animations, setAnimations] = useState<{ id: number; x: number; y: number; color: string }[]>([]);
+
+  const handleCraft = (e: React.MouseEvent, type: any, payload: any, color: string) => {
+    const rect = (e.target as HTMLElement).getBoundingClientRect();
+    setAnimations(prev => [...prev, { id: Date.now(), x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, color }]);
+    dispatch({ type, ...payload });
+  };
 
   const recipes = [
     { name: 'Copper Wire', icon: '➰', input: 'copper_ingot', inputAmount: 1, output: 'copper_wire', outputAmount: 5 },
@@ -209,10 +250,37 @@ function CraftingPanel() {
     }))
   ];
 
-  const filteredRecipes = recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.input.toLowerCase().includes(search.toLowerCase()));
+  const filteredBasicRecipes = recipes.filter(r => r.name.toLowerCase().includes(search.toLowerCase()) || r.input.toLowerCase().includes(search.toLowerCase()));
+  
+  // Tier unlock logic: A machine recipe is available if it is the first or if the player owns/has placed the previous machine
+  const availableMachines = MACHINE_RECIPES.filter((r: any, index: number) => {
+    if (r.name.toLowerCase().includes(search.toLowerCase()) === false) return false;
+    if (index === 0) return true;
+    const prevMachine = MACHINE_RECIPES[index - 1];
+    const ownsPrev = (state.inventory[prevMachine.id as ResourceKey] || 0) > 0;
+    const placedPrev = state.activeMachines.some(m => m.id === prevMachine.id);
+    return ownsPrev || placedPrev;
+  });
+
+  const availableElectronics = ELECTRONICS_RECIPES.filter((r: any) => r.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="flex flex-col h-full">
+      <div className="flex gap-1.5 overflow-x-auto pb-2 mb-2 scrollbar-none">
+        {['basic', 'machines', 'electronics'].map(t => (
+          <button
+            key={t}
+            onClick={() => setActiveTab(t as any)}
+            className={`whitespace-nowrap px-3 py-1 rounded-full text-[9px] uppercase font-bold tracking-wider transition-all border ${
+              activeTab === t
+                ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                : 'bg-white/5 text-white/50 hover:bg-white/10 hover:text-white/90 border-white/5'
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
       <div className="flex items-center gap-2 mb-3">
         <input 
           type="text" 
@@ -223,10 +291,10 @@ function CraftingPanel() {
         />
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 overflow-y-auto pr-1 scrollbar-thin flex-1 min-h-[250px]">
-        {filteredRecipes.map(recipe => {
+        {activeTab === 'basic' && filteredBasicRecipes.map(recipe => {
           const canCraft = (state.inventory[recipe.input as ResourceKey] || 0) >= recipe.inputAmount;
           return (
-            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
+            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5 relative overflow-hidden group">
                <span className="text-2xl">{recipe.icon}</span>
                <div className="flex-1">
                  <div className="text-xs font-bold leading-none">{recipe.name}</div>
@@ -235,19 +303,83 @@ function CraftingPanel() {
                  </div>
                </div>
                <button
-                 onClick={() => dispatch({ type: 'CRAFT', inputResource: recipe.input, inputAmount: recipe.inputAmount, outputResource: recipe.output, outputAmount: recipe.outputAmount })}
+                 onClick={(e) => handleCraft(e, 'CRAFT', { inputResource: recipe.input, inputAmount: recipe.inputAmount, outputResource: recipe.output, outputAmount: recipe.outputAmount }, '#34d399')}
                  disabled={!canCraft}
-                 className="px-2 py-1.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-10 border border-emerald-500/20"
+                 className="px-2 py-1.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-10 border border-emerald-500/20 z-10"
                >
                  Craft
                </button>
             </div>
           );
         })}
-        {filteredRecipes.length === 0 && (
-          <div className="col-span-full py-8 text-center text-xs opacity-40 italic">No recipes match your search.</div>
+        {activeTab === 'machines' && availableMachines.map((recipe: any) => {
+          const canCraft = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          return (
+            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
+              <span className="text-2xl">⚙️</span>
+              <div className="flex-1">
+                <div className="text-xs font-bold leading-none">{recipe.name} <span className="text-[8px] ml-1 opacity-50 bg-white/10 px-1 py-0.5 rounded uppercase">{recipe.tier}</span></div>
+                <div className="text-[9px] opacity-40 mt-1 flex flex-wrap gap-1">
+                  {Object.entries(recipe.inputs).length === 0 && <span>Free</span>}
+                  {Object.entries(recipe.inputs).map(([res, amt]) => (
+                    <span key={res} className={((state.inventory[res as ResourceKey] || 0) >= (amt as number)) ? 'text-green-400' : 'text-red-400'}>
+                      {amt}x {res.split('_').join(' ')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={(e) => handleCraft(e, 'CRAFT_MACHINE', { recipeId: recipe.id }, '#f59e0b')}
+                disabled={!canCraft}
+                className="px-2 py-1.5 rounded text-[10px] font-bold bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30 disabled:opacity-10 border border-indigo-500/20"
+              >
+                Assemble
+              </button>
+            </div>
+          );
+        })}
+        {activeTab === 'electronics' && availableElectronics.map((recipe: any) => {
+          const canCraft = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          return (
+            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5 relative overflow-hidden group">
+              <span className="text-2xl">🔌</span>
+              <div className="flex-1">
+                <div className="text-xs font-bold leading-none">{recipe.name} <span className="text-[8px] ml-1 opacity-50 bg-white/10 px-1 py-0.5 rounded uppercase">{recipe.tier}</span></div>
+                <div className="text-[9px] opacity-40 mt-1 flex flex-wrap gap-1">
+                  {Object.entries(recipe.inputs).map(([res, amt]) => (
+                    <span key={res} className={((state.inventory[res as ResourceKey] || 0) >= (amt as number)) ? 'text-green-400' : 'text-red-400'}>
+                      {amt}x {res.split('_').join(' ')}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={(e) => handleCraft(e, 'CRAFT', { inputResource: Object.keys(recipe.inputs)[0], inputAmount: Object.values(recipe.inputs)[0] as number, outputResource: recipe.id, outputAmount: recipe.outputAmount || 1 }, '#60a5fa')}
+                disabled={!canCraft}
+                className="px-2 py-1.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-10 border border-emerald-500/20 z-10"
+              >
+                Craft
+              </button>
+            </div>
+          );
+        })}
+        
+        {((activeTab === 'basic' && filteredBasicRecipes.length === 0) || 
+          (activeTab === 'machines' && availableMachines.length === 0) ||
+          (activeTab === 'electronics' && availableElectronics.length === 0)) && (
+          <div className="col-span-full py-8 text-center text-xs opacity-40 italic">No recipes match your search/tier.</div>
         )}
       </div>
+
+      {animations.map(anim => (
+        <ParticleBurst
+          key={anim.id}
+          x={anim.x}
+          y={anim.y}
+          color={anim.color}
+          onComplete={() => setAnimations(prev => prev.filter(a => a.id !== anim.id))}
+        />
+      ))}
     </div>
   );
 }
