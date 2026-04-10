@@ -125,14 +125,14 @@ export const BUILDING_COSTS: Record<BuildingType, Cost[]> = {
     { currency: 400, resources: { iron_ingot: 25, copper_wire: 15 } }
   ],
   refinery: [
-    { currency: 100, resources: { iron_ingot: 5 } },
-    { currency: 300, resources: { iron_ingot: 20, copper_wire: 10 } },
-    { currency: 700, resources: { iron_ingot: 50, circuit_board: 5 } }
+    { currency: 250 },
+    { currency: 350 },
+    { currency: 500 }
   ],
-  foundry:  [
-    { currency: 120, resources: { iron_ingot: 10, copper_wire: 5 } },
-    { currency: 350, resources: { iron_ingot: 30, copper_wire: 20 } },
-    { currency: 800, resources: { iron_ingot: 75, circuit_board: 10 } }
+  foundry: [
+    { currency: 250 },
+    { currency: 350 },
+    { currency: 500 }
   ],
 };
 
@@ -143,15 +143,16 @@ export const UPGRADE_COSTS: Record<BuildingType, Cost[]> = {
     { currency: 400, resources: { iron_ingot: 25, copper_wire: 15 } }
   ],
   refinery: [
-    { currency: 0 },
-    { currency: 300, resources: { iron_ingot: 20, copper_wire: 10 } },
-    { currency: 700, resources: { iron_ingot: 40, circuit_board: 5 } }
+    { currency: 250 },
+    { currency: 350 },
+    { currency: 500 }
   ],
-  foundry:  [
-    { currency: 0 },
-    { currency: 350, resources: { iron_ingot: 30, copper_wire: 20 } },
-    { currency: 800, resources: { iron_ingot: 60, circuit_board: 10 } }
+  foundry: [
+    { currency: 250 },
+    { currency: 350 },
+    { currency: 500 }
   ],
+  machine: []
 };
 
 // Simplified price generation: BaseValue * TierMultiplier
