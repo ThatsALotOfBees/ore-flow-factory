@@ -103,12 +103,33 @@ export interface ElectronicsRecipe {
 }
 
 export const ELECTRONICS_RECIPES: ElectronicsRecipe[] = [
-  // Early game examples
-  { id: 'copper_wire', name: 'Copper Wire', tier: MachineTier.Early, craftedIn: 'Wire Drawer', inputs: { copper_ingot: 1 }, outputAmount: 5 },
+  // ===== Tier 1: Raw stock from ingots =====
   { id: 'iron_plate', name: 'Iron Plate', tier: MachineTier.Early, craftedIn: 'Basic Press', inputs: { iron_ingot: 1 }, outputAmount: 4 },
-  { id: 'basic_circuit', name: 'Basic Circuit', tier: MachineTier.Early, craftedIn: 'Manual Assembler', inputs: { copper_wire: 2, tin_plate: 1 }, outputAmount: 1 },
-  // Mid game examples (add more as needed)
-  { id: 'advanced_circuit', name: 'Advanced Circuit', tier: MachineTier.Mid, craftedIn: 'Circuit Assembler', inputs: { basic_circuit: 2, fine_wire: 1, silvarin_plate: 1 }, outputAmount: 1 },
-  { id: 'servo_motor', name: 'Servo Motor', tier: MachineTier.Mid, craftedIn: 'Precision Lathe', inputs: { motor: 1, titanite_rod: 1 }, outputAmount: 1 },
-  // ... continue adding all parts from the user's list
+  { id: 'tin_plate', name: 'Tin Plate', tier: MachineTier.Early, craftedIn: 'Basic Press', inputs: { tin_ingot: 1 }, outputAmount: 4 },
+  { id: 'copper_wire', name: 'Copper Wire', tier: MachineTier.Early, craftedIn: 'Wire Drawer', inputs: { copper_ingot: 1 }, outputAmount: 5 },
+  { id: 'iron_casing', name: 'Iron Casing', tier: MachineTier.Early, craftedIn: 'Manual Assembler', inputs: { iron_plate: 3 }, outputAmount: 1 },
+  { id: 'bronzium_gear', name: 'Bronzium Gear', tier: MachineTier.Early, craftedIn: 'Manual Assembler', inputs: { copper_ingot: 2, tin_ingot: 1 }, outputAmount: 2 },
+  { id: 'heating_coil', name: 'Heating Coil', tier: MachineTier.Early, craftedIn: 'Manual Assembler', inputs: { copper_wire: 4, iron_plate: 1 }, outputAmount: 1 },
+
+  // ===== Tier 2: Industrial =====
+  { id: 'steel_plate', name: 'Steel Plate', tier: MachineTier.Mid, craftedIn: 'Basic Press', inputs: { iron_ingot: 2, graphite_ingot: 1 }, outputAmount: 3 },
+  { id: 'steel_casing', name: 'Steel Casing', tier: MachineTier.Mid, craftedIn: 'Basic Press', inputs: { steel_plate: 3 }, outputAmount: 1 },
+  { id: 'basic_circuit', name: 'Basic Circuit', tier: MachineTier.Mid, craftedIn: 'Manual Assembler', inputs: { copper_wire: 2, tin_plate: 1 }, outputAmount: 1 },
+  { id: 'pipe', name: 'Pipe', tier: MachineTier.Mid, craftedIn: 'Basic Press', inputs: { tin_plate: 2, iron_plate: 1 }, outputAmount: 2 },
+  { id: 'motor', name: 'Motor', tier: MachineTier.Mid, craftedIn: 'Manual Assembler', inputs: { iron_casing: 1, copper_wire: 6, bronzium_gear: 2 }, outputAmount: 1 },
+
+  // ===== Tier 3: Advanced =====
+  { id: 'fine_wire', name: 'Fine Wire', tier: MachineTier.Late, craftedIn: 'Wire Drawer', inputs: { copper_wire: 3, silver_ingot: 1 }, outputAmount: 2 },
+  { id: 'silvarin_plate', name: 'Silvarin Plate', tier: MachineTier.Late, craftedIn: 'Basic Press', inputs: { silver_ingot: 2, aluminum_ingot: 1 }, outputAmount: 2 },
+  { id: 'titanite_rod', name: 'Titanite Rod', tier: MachineTier.Late, craftedIn: 'Precision Lathe', inputs: { titanium_ingot: 2, chromium_ingot: 1 }, outputAmount: 2 },
+  { id: 'titanite_casing', name: 'Titanite Casing', tier: MachineTier.Late, craftedIn: 'Basic Press', inputs: { titanite_rod: 2, steel_plate: 2 }, outputAmount: 1 },
+  { id: 'advanced_circuit', name: 'Advanced Circuit', tier: MachineTier.Late, craftedIn: 'Circuit Assembler', inputs: { basic_circuit: 2, fine_wire: 1, silvarin_plate: 1 }, outputAmount: 1 },
+  { id: 'servo_motor', name: 'Servo Motor', tier: MachineTier.Late, craftedIn: 'Precision Lathe', inputs: { motor: 1, titanite_rod: 1 }, outputAmount: 1 },
+
+  // ===== Tier 4: Endgame =====
+  { id: 'xenolith_frame', name: 'Xenolith Frame', tier: MachineTier.Endgame, craftedIn: 'Nano Assembler', inputs: { titanite_casing: 2, aetherium_ingot: 1 }, outputAmount: 1 },
+  { id: 'energy_cell', name: 'Energy Cell', tier: MachineTier.Endgame, craftedIn: 'Nano Assembler', inputs: { lithium_ingot: 2, fine_wire: 3, aetherium_ingot: 1 }, outputAmount: 1 },
+  { id: 'quantum_processor', name: 'Quantum Processor', tier: MachineTier.Endgame, craftedIn: 'Nano Assembler', inputs: { advanced_circuit: 3, xenotite_ingot: 1, fine_wire: 2 }, outputAmount: 1 },
+  { id: 'veinite_core', name: 'Veinite Core', tier: MachineTier.Endgame, craftedIn: 'Quantum Fabricator', inputs: { veinite_ingot: 1, advanced_circuit: 2 }, outputAmount: 1 },
+  { id: 'oblivionite_frame', name: 'Oblivionite Frame', tier: MachineTier.Endgame, craftedIn: 'Quantum Fabricator', inputs: { oblivionite_ingot: 2, titanite_casing: 3 }, outputAmount: 1 },
 ];

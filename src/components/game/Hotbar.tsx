@@ -262,6 +262,12 @@ function CraftingPanel() {
     return ownsPrev || placedPrev;
   });
 
+  const placedMachineNames = new Set(
+    state.activeMachines.map(m => {
+      const mr = MACHINE_RECIPES.find(r => r.id === m.id);
+      return mr?.name ?? '';
+    })
+  );
   const availableElectronics = ELECTRONICS_RECIPES.filter((r: any) => r.name.toLowerCase().includes(search.toLowerCase()));
 
   return (
@@ -313,12 +319,17 @@ function CraftingPanel() {
           );
         })}
         {activeTab === 'machines' && availableMachines.map((recipe: any) => {
-          const canCraft = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          const hasMachine = recipe.craftedIn === 'Hand' || placedMachineNames.has(recipe.craftedIn);
+          const hasInputs = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          const canCraft = hasMachine && hasInputs;
           return (
-            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5">
+            <div key={recipe.name} className={`flex items-center gap-3 p-3 rounded-lg border bg-white/5 ${hasMachine ? 'border-white/10' : 'border-white/5 opacity-50'}`}>
               <span className="text-2xl">⚙️</span>
               <div className="flex-1">
                 <div className="text-xs font-bold leading-none">{recipe.name} <span className="text-[8px] ml-1 opacity-50 bg-white/10 px-1 py-0.5 rounded uppercase">{recipe.tier}</span></div>
+                <div className="text-[9px] mt-0.5">
+                  <span className={hasMachine ? 'text-emerald-400/60' : 'text-red-400/60'}>⚙️ {recipe.craftedIn}</span>
+                </div>
                 <div className="text-[9px] opacity-40 mt-1 flex flex-wrap gap-1">
                   {Object.entries(recipe.inputs).length === 0 && <span>Free</span>}
                   {Object.entries(recipe.inputs).map(([res, amt]) => (
@@ -339,12 +350,18 @@ function CraftingPanel() {
           );
         })}
         {activeTab === 'electronics' && availableElectronics.map((recipe: any) => {
-          const canCraft = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          const hasMachine = recipe.craftedIn === 'Hand' || placedMachineNames.has(recipe.craftedIn);
+          const hasInputs = Object.entries(recipe.inputs).every(([res, amt]) => (state.inventory[res as ResourceKey] || 0) >= (amt as number));
+          const canCraft = hasMachine && hasInputs;
           return (
-            <div key={recipe.name} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-white/5 relative overflow-hidden group">
+            <div key={recipe.id} className={`flex items-center gap-3 p-3 rounded-lg border bg-white/5 relative overflow-hidden group ${hasMachine ? 'border-white/10' : 'border-white/5 opacity-50'}`}>
               <span className="text-2xl">🔌</span>
               <div className="flex-1">
                 <div className="text-xs font-bold leading-none">{recipe.name} <span className="text-[8px] ml-1 opacity-50 bg-white/10 px-1 py-0.5 rounded uppercase">{recipe.tier}</span></div>
+                <div className="text-[9px] mt-0.5">
+                  <span className={hasMachine ? 'text-emerald-400/60' : 'text-red-400/60'}>⚙️ {recipe.craftedIn}</span>
+                  {recipe.outputAmount > 1 && <span className="opacity-40 ml-1.5">→ {recipe.outputAmount}x</span>}
+                </div>
                 <div className="text-[9px] opacity-40 mt-1 flex flex-wrap gap-1">
                   {Object.entries(recipe.inputs).map(([res, amt]) => (
                     <span key={res} className={((state.inventory[res as ResourceKey] || 0) >= (amt as number)) ? 'text-green-400' : 'text-red-400'}>
@@ -354,7 +371,7 @@ function CraftingPanel() {
                 </div>
               </div>
               <button
-                onClick={(e) => handleCraft(e, 'CRAFT', { inputResource: Object.keys(recipe.inputs)[0], inputAmount: Object.values(recipe.inputs)[0] as number, outputResource: recipe.id, outputAmount: recipe.outputAmount || 1 }, '#60a5fa')}
+                onClick={(e) => handleCraft(e, 'CRAFT_ELECTRONIC', { recipeId: recipe.id }, '#60a5fa')}
                 disabled={!canCraft}
                 className="px-2 py-1.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 disabled:opacity-10 border border-emerald-500/20 z-10"
               >

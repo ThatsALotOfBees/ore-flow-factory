@@ -6,6 +6,7 @@ export const ORES = [
 ] as const;
 
 import { AlloyType, ALLOY_RECIPES } from './alloys';
+import { ELECTRONICS_RECIPES } from './machines';
 
 export type OreType = typeof ORES[number];
 
@@ -66,13 +67,35 @@ export interface Building {
 }
 
 // Generate resource keys for all 25 ores
-export type ResourceKey = 
+export type ResourceKey =
   | `${OreType}_ore`
   | `refined_${OreType}`
   | `${OreType}_ingot`
   | AlloyType
-  | 'copper_wire'
   | 'circuit_board'
+  // Electronics / components
+  | 'iron_plate'
+  | 'tin_plate'
+  | 'copper_wire'
+  | 'iron_casing'
+  | 'bronzium_gear'
+  | 'heating_coil'
+  | 'steel_plate'
+  | 'steel_casing'
+  | 'basic_circuit'
+  | 'pipe'
+  | 'motor'
+  | 'fine_wire'
+  | 'silvarin_plate'
+  | 'titanite_rod'
+  | 'titanite_casing'
+  | 'advanced_circuit'
+  | 'servo_motor'
+  | 'xenolith_frame'
+  | 'energy_cell'
+  | 'quantum_processor'
+  | 'veinite_core'
+  | 'oblivionite_frame'
   // Machines
   | 'manual_assembler'
   | 'basic_press'
@@ -175,7 +198,6 @@ ORES.forEach(ore => {
   SELL_PRICES[`refined_${ore}`] = meta.value * 1.5;
   SELL_PRICES[`${ore}_ingot`] = meta.value * 5;
 });
-SELL_PRICES['copper_wire'] = 8;
 SELL_PRICES['circuit_board'] = 25;
 
 // Alloy dynamic pricing
@@ -187,6 +209,23 @@ ALLOY_RECIPES.forEach(recipe => {
   }
   // Price depends on the rarity of the alloy: Base cost to produce * rarity markup
   SELL_PRICES[recipe.id] = baseValue * (tierMultipliers[recipe.rarity] || 1.5);
+});
+
+// Electronics / component dynamic pricing (input cost x markup, per output unit)
+const componentTierMarkup: Record<string, number> = {
+  Early: 2,
+  Mid: 3,
+  Late: 5,
+  Endgame: 10,
+};
+ELECTRONICS_RECIPES.forEach(recipe => {
+  let baseValue = 0;
+  for (const [ingredient, qty] of Object.entries(recipe.inputs)) {
+    const ingredientValue = SELL_PRICES[ingredient] || 0;
+    baseValue += ingredientValue * (qty as number);
+  }
+  const perUnit = baseValue / (recipe.outputAmount || 1);
+  SELL_PRICES[recipe.id] = perUnit * (componentTierMarkup[recipe.tier] || 2);
 });
 
 export const MINER_BASE_RATE = 720;
