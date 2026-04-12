@@ -7,6 +7,13 @@ import {
 import { generateGrid } from './grid';
 import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from './machines';
 
+function hasMachinePlaced(state: GameState, machineName: string): boolean {
+  if (machineName === 'Hand') return true;
+  const recipe = MACHINE_RECIPES.find(r => r.name === machineName);
+  if (!recipe) return false;
+  return state.activeMachines.some(m => m.id === recipe.id);
+}
+
 export type GameAction =
   | { type: 'PLACE_BUILDING'; x: number; y: number; buildingType: BuildingType }
   | { type: 'UPGRADE_BUILDING'; x: number; y: number }
@@ -26,6 +33,7 @@ export type GameAction =
   | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number }
   | { type: 'SELECT_MACHINE'; machineId: string | null }
   | { type: 'CRAFT_MACHINE'; recipeId: string }
+  | { type: 'CRAFT_ELECTRONIC'; recipeId: string }
   | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string }
   | { type: 'PLACE_BUILDING_BULK'; tiles: { x: number; y: number }[]; buildingType: BuildingType };
 
@@ -435,12 +443,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const recipe = MACHINE_RECIPES.find(r => r.id === action.recipeId);
       if (!recipe) return state;
 
-      // Verification: Tier check
-      // Find the index of this machine in the recipe list
+      if (!hasMachinePlaced(state, recipe.craftedIn)) return state;
+
       const recipeIndex = MACHINE_RECIPES.indexOf(recipe);
       if (recipeIndex > 0) {
         const prevMachine = MACHINE_RECIPES[recipeIndex - 1];
-        // Must have at least one of the previous machine to unlock (either in inventory or placed)
         const hasPrevInInventory = (state.inventory[prevMachine.id as ResourceKey] || 0) > 0;
         const hasPrevPlaced = state.activeMachines.some(m => m.id === prevMachine.id);
         if (!hasPrevInInventory && !hasPrevPlaced) return state;
@@ -453,7 +460,28 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         if (alreadyOwned || alreadyPlaced) return state;
       }
 
-      // Check inputs
+      for (const [res, amt] of Object.entries(recipe.inputs)) {
+        if ((state.inventory[res as ResourceKey] || 0) < amt) return state;
+      }
+
+      const newInv = { ...state.inventory };
+      for (const [res, amt] of Object.entries(recipe.inputs)) {
+        newInv[res as ResourceKey] = (newInv[res as ResourceKey] || 0) - amt;
+      }
+      newInv[recipe.id as ResourceKey] = (newInv[recipe.id as ResourceKey] || 0) + (recipe.outputAmount || 1);
+
+      return {
+        ...state,
+        inventory: newInv,
+      };
+    }
+
+    case 'CRAFT_ELECTRONIC': {
+      const recipe = ELECTRONICS_RECIPES.find(r => r.id === action.recipeId);
+      if (!recipe) return state;
+
+      if (!hasMachinePlaced(state, recipe.craftedIn)) return state;
+
       for (const [res, amt] of Object.entries(recipe.inputs)) {
         if ((state.inventory[res as ResourceKey] || 0) < amt) return state;
       }
