@@ -2,7 +2,9 @@ import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react'
 import { useGame } from '@/game/GameContext';
 import { Tile, GRID_SIZE, MINER_BASE_RATE, ORE_METADATA, BUILDING_COSTS, REFINERY_SPEED, FOUNDRY_SPEED } from '@/game/types';
 import { MACHINE_RECIPES, ELECTRONICS_RECIPES } from '@/game/machines';
+import { CursorPosition } from '@/game/multiplayer/types';
 import { TileContextMenu } from './TileContextMenu';
+import { RemoteCursor } from './RemoteCursor';
 
 const TILE_SIZE = 40;
 
@@ -104,7 +106,12 @@ const TileItem = React.memo(({
 
 TileItem.displayName = 'TileItem';
 
-export function GameGrid() {
+interface GameGridProps {
+  remoteCursors?: CursorPosition[];
+  onCursorMove?: (gridX: number, gridY: number) => void;
+}
+
+export function GameGrid({ remoteCursors = [], onCursorMove }: GameGridProps) {
   const { state, dispatch } = useGame();
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(0.8);
@@ -155,7 +162,21 @@ export function GameGrid() {
         y: panStart.y + (e.clientY - dragStart.y),
       });
     }
-  }, [dragging, dragStart, panStart]);
+    if (onCursorMove && containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+      const screenX0 = width / 2 - gridWidth / 2 + pan.x;
+      const screenY0 = height / 2 - gridHeight / 2 + pan.y;
+      const localX = e.clientX - rect.left;
+      const localY = e.clientY - rect.top;
+      const gridX = Math.floor((localX - screenX0) / (TILE_SIZE * zoom));
+      const gridY = Math.floor((localY - screenY0) / (TILE_SIZE * zoom));
+      if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
+        onCursorMove(gridX, gridY);
+      }
+    }
+  }, [dragging, dragStart, panStart, onCursorMove, pan, zoom, gridWidth, gridHeight]);
 
   const handleMouseUp = useCallback(() => setDragging(false), []);
 
@@ -298,6 +319,11 @@ export function GameGrid() {
             </React.Fragment>
           );
         })}
+
+        {/* Remote player cursors */}
+        {remoteCursors.map(cursor => (
+          <RemoteCursor key={cursor.userId} cursor={cursor} tileSize={TILE_SIZE} />
+        ))}
       </div>
 
       {/* Tooltip */}

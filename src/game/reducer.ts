@@ -35,7 +35,8 @@ export type GameAction =
   | { type: 'CRAFT_MACHINE'; recipeId: string }
   | { type: 'CRAFT_ELECTRONIC'; recipeId: string }
   | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string }
-  | { type: 'PLACE_BUILDING_BULK'; tiles: { x: number; y: number }[]; buildingType: BuildingType };
+  | { type: 'PLACE_BUILDING_BULK'; tiles: { x: number; y: number }[]; buildingType: BuildingType }
+  | { type: 'TICK_SYNC'; inventory: Inventory; tickCount: number };
 
 export function createInitialState(): GameState {
   const seed = Date.now();
@@ -533,6 +534,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         selectedMachineId: null, // Reset selection after placement
       };
     }
+
+    case 'TICK_SYNC':
+      return { ...state, inventory: action.inventory, tickCount: action.tickCount };
 
     default:
       return state;
