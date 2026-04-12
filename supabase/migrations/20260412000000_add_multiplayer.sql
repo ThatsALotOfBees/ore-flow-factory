@@ -1,4 +1,5 @@
 -- Multiplayer: game sessions + session members
+-- Tables created first, then RLS policies (to avoid forward-reference errors)
 
 -- Invite code generator
 CREATE OR REPLACE FUNCTION public.generate_invite_code()
@@ -18,7 +19,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
--- Sessions table
+-- ==================== TABLES ====================
+
 CREATE TABLE public.game_sessions (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   host_user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -33,17 +35,6 @@ CREATE TABLE public.game_sessions (
 CREATE INDEX idx_sessions_invite_active ON public.game_sessions(invite_code) WHERE status = 'active';
 CREATE INDEX idx_sessions_host ON public.game_sessions(host_user_id);
 
-ALTER TABLE public.game_sessions ENABLE ROW LEVEL SECURITY;
-
-CREATE POLICY "Host manages own sessions"
-  ON public.game_sessions FOR ALL USING (host_user_id = auth.uid());
-
-CREATE POLICY "Members can view their session"
-  ON public.game_sessions FOR SELECT USING (
-    id IN (SELECT session_id FROM public.session_members WHERE user_id = auth.uid())
-  );
-
--- Session members table
 CREATE TABLE public.session_members (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   session_id UUID NOT NULL REFERENCES public.game_sessions(id) ON DELETE CASCADE,
@@ -58,6 +49,18 @@ CREATE TABLE public.session_members (
 CREATE INDEX idx_members_session ON public.session_members(session_id);
 CREATE INDEX idx_members_user ON public.session_members(user_id);
 
+-- ==================== RLS POLICIES ====================
+
+ALTER TABLE public.game_sessions ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Host manages own sessions"
+  ON public.game_sessions FOR ALL USING (host_user_id = auth.uid());
+
+CREATE POLICY "Members can view their session"
+  ON public.game_sessions FOR SELECT USING (
+    id IN (SELECT session_id FROM public.session_members WHERE user_id = auth.uid())
+  );
+
 ALTER TABLE public.session_members ENABLE ROW LEVEL SECURITY;
 
 CREATE POLICY "Members can view session members"
@@ -68,7 +71,8 @@ CREATE POLICY "Members can view session members"
 CREATE POLICY "Users can leave sessions"
   ON public.session_members FOR DELETE USING (user_id = auth.uid());
 
--- Player colors assigned round-robin
+-- ==================== HELPER FUNCTIONS ====================
+
 CREATE OR REPLACE FUNCTION public.pick_player_color(p_session_id UUID)
 RETURNS TEXT AS $$
 DECLARE
@@ -80,7 +84,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SET search_path = public;
 
--- RPC: Create a multiplayer session
+-- ==================== RPC FUNCTIONS ====================
+
 CREATE OR REPLACE FUNCTION public.create_session(p_save_id UUID)
 RETURNS JSONB AS $$
 DECLARE
@@ -106,7 +111,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC: Join a session by invite code
 CREATE OR REPLACE FUNCTION public.join_session(p_invite_code TEXT)
 RETURNS JSONB AS $$
 DECLARE
@@ -132,7 +136,6 @@ BEGIN
     RAISE EXCEPTION 'Session is full';
   END IF;
 
-  -- Check if already a member
   IF EXISTS(SELECT 1 FROM public.session_members WHERE session_id = v_session.id AND user_id = auth.uid()) THEN
     RAISE EXCEPTION 'Already in this session';
   END IF;
@@ -143,7 +146,6 @@ BEGIN
   INSERT INTO public.session_members (session_id, user_id, role, display_name, color)
   VALUES (v_session.id, auth.uid(), 'guest', COALESCE(v_display_name, 'Guest'), v_color);
 
-  -- Return session info + save data for initial load
   SELECT save_data INTO v_save_data FROM public.game_saves WHERE id = v_session.save_id;
 
   RETURN jsonb_build_object(
@@ -157,19 +159,16 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC: Leave a session
 CREATE OR REPLACE FUNCTION public.leave_session(p_session_id UUID)
 RETURNS VOID AS $$
 BEGIN
   DELETE FROM public.session_members WHERE session_id = p_session_id AND user_id = auth.uid();
 
-  -- If the host leaves, close the session
   UPDATE public.game_sessions SET status = 'closed'
   WHERE id = p_session_id AND host_user_id = auth.uid();
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC: Kick a player (host-only)
 CREATE OR REPLACE FUNCTION public.kick_player(p_session_id UUID, p_user_id UUID)
 RETURNS VOID AS $$
 BEGIN
@@ -181,7 +180,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- RPC: Regenerate invite code (host-only)
 CREATE OR REPLACE FUNCTION public.regenerate_invite(p_session_id UUID)
 RETURNS TEXT AS $$
 DECLARE
@@ -200,5 +198,5 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
--- Enable Realtime on session_members for membership change detection
+-- Enable Realtime on session_members
 ALTER PUBLICATION supabase_realtime ADD TABLE public.session_members;
