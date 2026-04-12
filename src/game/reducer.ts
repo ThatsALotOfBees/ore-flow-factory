@@ -26,7 +26,8 @@ export type GameAction =
   | { type: 'SMELT_ALLOY'; inputs: Record<string, number>; output: string; outputAmount: number }
   | { type: 'SELECT_MACHINE'; machineId: string | null }
   | { type: 'CRAFT_MACHINE'; recipeId: string }
-  | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string };
+  | { type: 'PLACE_MACHINE'; x: number; y: number; machineId: string }
+  | { type: 'TICK_SYNC'; inventory: Inventory; tickCount: number };
 
 export function createInitialState(): GameState {
   const seed = Date.now();
@@ -451,6 +452,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         selectedMachineId: null, // Reset selection after placement
       };
     }
+
+    case 'TICK_SYNC':
+      return { ...state, inventory: action.inventory, tickCount: action.tickCount };
 
     default:
       return state;

@@ -4,31 +4,52 @@ import { GameAction, gameReducer, createInitialState } from './reducer';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { MultiplayerSession, MultiplayerRole } from './multiplayer/types';
+import { useMultiplayerSync } from './multiplayer/useMultiplayerSync';
 
 interface GameContextValue {
   state: GameState;
   dispatch: React.Dispatch<GameAction>;
   saving: boolean;
+  multiplayerRole: MultiplayerRole;
+  broadcastKick: (userId: string) => void;
 }
 
 const GameContext = createContext<GameContextValue | null>(null);
 
-export function GameProvider({ children }: { children: React.ReactNode }) {
+interface GameProviderProps {
+  children: React.ReactNode;
+  session: MultiplayerSession | null;
+  role: MultiplayerRole;
+}
+
+export function GameProvider({ children, session, role }: GameProviderProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [loaded, setLoaded] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  // Track state in a ref so the save interval doesn't reset every second on TICK
   const stateRef = React.useRef(state);
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
-  // Load save from Supabase on mount
+  const { multiplayerDispatch, broadcastTickDelta, broadcastKick } = useMultiplayerSync({
+    dispatch,
+    stateRef,
+    session,
+    role,
+    userId: user?.id || '',
+  });
+
+  // Load save from Supabase on mount (solo or host only — guests get state via sync)
   useEffect(() => {
     if (!user) return;
+    if (role === 'guest') {
+      setLoaded(true);
+      return;
+    }
     (async () => {
       const { data } = await supabase
         .from('game_saves')
@@ -40,17 +61,17 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       }
       setLoaded(true);
     })();
-  }, [user]);
+  }, [user, role]);
 
-  // Auto-save every 15 seconds
+  // Auto-save (host and solo only — guests don't save)
   useEffect(() => {
-    if (!user || !loaded) return;
+    if (!user || !loaded || role === 'guest') return;
     const id = setInterval(async () => {
       setSaving(true);
       const { error } = await supabase
         .from('game_saves')
         .upsert({ user_id: user.id, save_data: stateRef.current as any }, { onConflict: 'user_id' });
-      
+
       if (error) {
         console.error("Auto-Save Error:", error);
         toast({ title: 'Save Failed', description: error.message, variant: 'destructive' });
@@ -58,16 +79,26 @@ export function GameProvider({ children }: { children: React.ReactNode }) {
       setSaving(false);
     }, 3000);
     return () => clearInterval(id);
-  }, [user, loaded]);
+  }, [user, loaded, role]);
 
-  // Game tick every 1 second
+  // Game tick (host and solo only — guests receive tick_delta via broadcast)
   useEffect(() => {
-    const id = setInterval(() => dispatch({ type: 'TICK' }), 1000);
+    if (role === 'guest') return;
+    const id = setInterval(() => {
+      dispatch({ type: 'TICK' });
+      broadcastTickDelta();
+    }, 1000);
     return () => clearInterval(id);
-  }, []);
+  }, [role, broadcastTickDelta]);
 
   return (
-    <GameContext.Provider value={{ state, dispatch, saving }}>
+    <GameContext.Provider value={{
+      state,
+      dispatch: multiplayerDispatch,
+      saving,
+      multiplayerRole: role,
+      broadcastKick,
+    }}>
       {children}
     </GameContext.Provider>
   );
