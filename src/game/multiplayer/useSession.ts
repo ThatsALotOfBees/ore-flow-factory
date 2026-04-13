@@ -9,7 +9,7 @@ export function useSession(userId: string) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchMembers = useCallback(async (sessionId: string) => {
-    const { data } = await supabase
+    const { data } = await (supabase as any)
       .from('session_members')
       .select('*')
       .eq('session_id', sessionId);
@@ -42,7 +42,7 @@ export function useSession(userId: string) {
         return null;
       }
 
-      const { data, error: rpcError } = await supabase.rpc('create_session', {
+      const { data, error: rpcError } = await (supabase as any).rpc('create_session', {
         p_save_id: save.id,
       });
 
@@ -73,7 +73,7 @@ export function useSession(userId: string) {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc('join_session', {
+      const { data, error: rpcError } = await (supabase as any).rpc('join_session', {
         p_invite_code: inviteCode.toUpperCase(),
       });
 
@@ -104,7 +104,7 @@ export function useSession(userId: string) {
     if (!session) return;
     setLoading(true);
     try {
-      await supabase.rpc('leave_session', { p_session_id: session.id });
+      await (supabase as any).rpc('leave_session', { p_session_id: session.id });
     } catch (e: any) {
       console.error('Leave session error:', e);
     }
@@ -116,7 +116,7 @@ export function useSession(userId: string) {
   const kickPlayer = useCallback(async (targetUserId: string) => {
     if (!session) return;
     try {
-      await supabase.rpc('kick_player', {
+      await (supabase as any).rpc('kick_player', {
         p_session_id: session.id,
         p_user_id: targetUserId,
       });
@@ -129,7 +129,7 @@ export function useSession(userId: string) {
   const regenerateInvite = useCallback(async () => {
     if (!session) return;
     try {
-      const { data } = await supabase.rpc('regenerate_invite', {
+      const { data } = await (supabase as any).rpc('regenerate_invite', {
         p_session_id: session.id,
       });
       if (data) {
