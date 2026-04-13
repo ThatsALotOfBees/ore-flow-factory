@@ -54,7 +54,7 @@ function GlobalMarket() {
   const { data: listings, isLoading } = useQuery({
     queryKey: ['marketplace_listings'],
     queryFn: async () => {
-      const { data, error } = await supabase.from('marketplace_listings').select('*').order('created_at', { ascending: false });
+      const { data, error } = await (supabase as any).from('marketplace_listings').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       return data as MarketplaceListing[];
     },
@@ -63,7 +63,7 @@ function GlobalMarket() {
 
   const buyMutation = useMutation({
     mutationFn: async ({ id, amount }: { id: string, amount: number }) => {
-      const { data, error } = await supabase.rpc('buy_marketplace_item', { p_listing_id: id, p_amount: amount });
+      const { data, error } = await (supabase as any).rpc('buy_marketplace_item', { p_listing_id: id, p_amount: amount });
       if (error) throw error;
       return data;
     },
@@ -165,14 +165,14 @@ function MyListings() {
   const { data: myLists } = useQuery({
     queryKey: ['marketplace_listings', 'mine'],
     queryFn: async () => {
-      const { data } = await supabase.from('marketplace_listings').select('*').eq('seller_id', user?.id);
+      const { data } = await (supabase as any).from('marketplace_listings').select('*').eq('seller_id', user?.id);
       return data as MarketplaceListing[];
     }
   });
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from('marketplace_listings').insert({
+      const { error } = await (supabase as any).from('marketplace_listings').insert({
         seller_id: user?.id!,
         seller_email: user?.email!,
         resource,
@@ -190,7 +190,7 @@ function MyListings() {
 
   const claimMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc('claim_pending_balance');
+      const { data, error } = await (supabase as any).rpc('claim_pending_balance');
       if (error) throw error;
       return data as number;
     },
@@ -204,7 +204,7 @@ function MyListings() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from('marketplace_listings').delete().eq('id', id);
+      await (supabase as any).from('marketplace_listings').delete().eq('id', id);
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['marketplace_listings'] })
   });
@@ -217,12 +217,12 @@ function MyListings() {
       <div className="p-4 rounded-xl border border-amber-500/30 bg-amber-500/5 flex items-center justify-between shrink-0">
         <div>
           <div className="text-xs uppercase text-amber-500/70 font-bold mb-1">Escrow Inbox</div>
-          <div className="text-2xl font-black text-amber-400">${(profile?.pending_balance || 0).toFixed(2)}</div>
+          <div className="text-2xl font-black text-amber-400">${((profile as any)?.pending_balance || 0).toFixed(2)}</div>
           <div className="text-[10px] opacity-50">Earnings from offline sales</div>
         </div>
         <button
           onClick={() => claimMutation.mutate()}
-          disabled={!profile?.pending_balance || profile.pending_balance <= 0 || claimMutation.isPending}
+          disabled={!(profile as any)?.pending_balance || (profile as any).pending_balance <= 0 || claimMutation.isPending}
           className="px-4 py-2 rounded-lg bg-amber-500 text-black font-bold disabled:opacity-30 disabled:cursor-not-allowed hover:bg-amber-400"
         >
           {claimMutation.isPending ? 'Claiming...' : 'Claim Cash'}

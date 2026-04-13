@@ -14,69 +14,6 @@ export type Database = {
   }
   public: {
     Tables: {
-      game_sessions: {
-        Row: {
-          id: string
-          host_user_id: string
-          save_id: string
-          invite_code: string
-          invite_expires_at: string
-          max_players: number
-          status: string
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          host_user_id: string
-          save_id: string
-          invite_code?: string
-          invite_expires_at?: string
-          max_players?: number
-          status?: string
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          host_user_id?: string
-          save_id?: string
-          invite_code?: string
-          invite_expires_at?: string
-          max_players?: number
-          status?: string
-          created_at?: string
-        }
-        Relationships: []
-      }
-      session_members: {
-        Row: {
-          id: string
-          session_id: string
-          user_id: string
-          role: string
-          display_name: string
-          color: string
-          joined_at: string
-        }
-        Insert: {
-          id?: string
-          session_id: string
-          user_id: string
-          role?: string
-          display_name?: string
-          color?: string
-          joined_at?: string
-        }
-        Update: {
-          id?: string
-          session_id?: string
-          user_id?: string
-          role?: string
-          display_name?: string
-          color?: string
-          joined_at?: string
-        }
-        Relationships: []
-      }
       game_saves: {
         Row: {
           created_at: string
@@ -109,7 +46,6 @@ export type Database = {
           id: string
           updated_at: string
           user_id: string
-          pending_balance: number | null
         }
         Insert: {
           avatar_url?: string | null
@@ -118,7 +54,6 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id: string
-          pending_balance?: number | null
         }
         Update: {
           avatar_url?: string | null
@@ -127,37 +62,6 @@ export type Database = {
           id?: string
           updated_at?: string
           user_id?: string
-          pending_balance?: number | null
-        }
-        Relationships: []
-      }
-      marketplace_listings: {
-        Row: {
-          id: string
-          seller_id: string
-          seller_email: string
-          resource: string
-          amount: number
-          price_per_unit: number
-          created_at: string
-        }
-        Insert: {
-          id?: string
-          seller_id: string
-          seller_email: string
-          resource: string
-          amount: number
-          price_per_unit: number
-          created_at?: string
-        }
-        Update: {
-          id?: string
-          seller_id?: string
-          seller_email?: string
-          resource?: string
-          amount?: number
-          price_per_unit?: number
-          created_at?: string
         }
         Relationships: []
       }
@@ -166,48 +70,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      buy_marketplace_item: {
-        Args: {
-          p_listing_id: string
-          p_amount: number
-        }
-        Returns: Json
-      }
-      claim_pending_balance: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
-      create_session: {
-        Args: {
-          p_save_id: string
-        }
-        Returns: Json
-      }
-      join_session: {
-        Args: {
-          p_invite_code: string
-        }
-        Returns: Json
-      }
-      leave_session: {
-        Args: {
-          p_session_id: string
-        }
-        Returns: undefined
-      }
-      kick_player: {
-        Args: {
-          p_session_id: string
-          p_user_id: string
-        }
-        Returns: undefined
-      }
-      regenerate_invite: {
-        Args: {
-          p_session_id: string
-        }
-        Returns: string
-      }
+      [_ in never]: never
     }
     Enums: {
       [_ in never]: never

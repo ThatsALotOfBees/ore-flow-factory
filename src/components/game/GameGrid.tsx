@@ -119,6 +119,9 @@ export function GameGrid({ remoteCursors = [], onCursorMove }: GameGridProps) {
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
+
+  const gridWidth = GRID_SIZE * TILE_SIZE;
+  const gridHeight = GRID_SIZE * TILE_SIZE;
   const [hoveredTile, setHoveredTile] = useState<Tile | null>(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
   const [contextMenu, setContextMenu] = useState<{ tile: Tile; x: number; y: number } | null>(null);
@@ -225,8 +228,6 @@ export function GameGrid({ remoteCursors = [], onCursorMove }: GameGridProps) {
     setContextMenu({ tile, x: e.clientX, y: e.clientY });
   }, []);
 
-  const gridWidth = GRID_SIZE * TILE_SIZE;
-  const gridHeight = GRID_SIZE * TILE_SIZE;
 
   // Viewport calculation
   const visibleTiles = useMemo(() => {
