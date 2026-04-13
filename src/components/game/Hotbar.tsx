@@ -338,7 +338,7 @@ function CraftingPanel() {
                   {Object.entries(recipe.inputs).length === 0 && <span>Free</span>}
                   {Object.entries(recipe.inputs).map(([res, amt]) => (
                     <span key={res} className={((state.inventory[res as ResourceKey] || 0) >= (amt as number)) ? 'text-green-400' : 'text-red-400'}>
-                      {amt}x {res.split('_').join(' ')}
+                      {amt as number}x {res.split('_').join(' ')}
                     </span>
                   ))}
                 </div>
@@ -369,7 +369,7 @@ function CraftingPanel() {
                 <div className="text-[9px] opacity-40 mt-1 flex flex-wrap gap-1">
                   {Object.entries(recipe.inputs).map(([res, amt]) => (
                     <span key={res} className={((state.inventory[res as ResourceKey] || 0) >= (amt as number)) ? 'text-green-400' : 'text-red-400'}>
-                      {amt}x {res.split('_').join(' ')}
+                      {amt as number}x {res.split('_').join(' ')}
                     </span>
                   ))}
                 </div>
